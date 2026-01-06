@@ -1,0 +1,46 @@
+dist:
+  module: go.olly.garden/grafts/distributions/grafts
+  name: grafts
+  description: OllyGarden Grafts - OpenTelemetry Collector with NATS JetStream support
+  output_path: ./build
+  version: 0.1.0
+
+receivers:
+  # Core OTLP receiver
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.143.0
+
+  # NATS JetStream receiver (from main module)
+  - gomod: go.olly.garden/grafts/receiver/natsjetstreamreceiver v0.0.0
+    path: ../../receiver/natsjetstreamreceiver
+
+processors:
+  # Essential processors
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.143.0
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.143.0
+
+exporters:
+  # Core exporters
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.143.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.143.0
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.143.0
+
+extensions:
+  # Health and observability
+  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.143.0
+
+connectors:
+  # Forward connector for pipeline bridging
+  - gomod: go.opentelemetry.io/collector/connector/forwardconnector v0.143.0
+
+providers:
+  # Configuration providers
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.49.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.49.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.49.0
+
+conf_resolver:
+  default_uri_scheme: env
+
+# Replace directive to use local receiver from parent module
+replaces:
+  - go.olly.garden/grafts/receiver/natsjetstreamreceiver => ../../receiver/natsjetstreamreceiver
