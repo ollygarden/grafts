@@ -7,8 +7,6 @@ require (
 	github.com/nats-io/nats.go v1.48.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/collector/component v1.49.0
-	go.opentelemetry.io/collector/config/configoptional v1.49.0
-	go.opentelemetry.io/collector/config/configretry v1.49.0
 	go.opentelemetry.io/collector/consumer v1.49.0
 	go.opentelemetry.io/collector/consumer/consumererror v0.143.0
 	go.opentelemetry.io/collector/exporter v1.49.0
@@ -47,6 +45,8 @@ require (
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/collector/client v1.49.0 // indirect
 	go.opentelemetry.io/collector/component/componenttest v0.143.0 // indirect
+	go.opentelemetry.io/collector/config/configoptional v1.49.0 // indirect
+	go.opentelemetry.io/collector/config/configretry v1.49.0 // indirect
 	go.opentelemetry.io/collector/confmap v1.49.0 // indirect
 	go.opentelemetry.io/collector/confmap/xconfmap v0.143.0 // indirect
 	go.opentelemetry.io/collector/consumer/consumertest v0.143.0 // indirect
