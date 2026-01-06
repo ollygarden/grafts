@@ -21,6 +21,7 @@ type receiverStore struct {
 
 type sharedReceiver struct {
 	receiver  *natsJetStreamReceiver
+	id        component.ID
 	startOnce sync.Once
 	stopOnce  sync.Once
 }
@@ -60,9 +61,17 @@ func (s *receiverStore) getOrCreateReceiver(
 
 	shared := &sharedReceiver{
 		receiver: receiver,
+		id:       id,
 	}
 	s.receivers[id] = shared
 	return shared, nil
+}
+
+// remove removes a receiver instance from the store.
+func (s *receiverStore) remove(id component.ID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.receivers, id)
 }
 
 // createTracesReceiver creates a traces receiver instance.
@@ -130,6 +139,7 @@ func (w *receiverWrapper) Shutdown(ctx context.Context) error {
 	var err error
 	w.shared.stopOnce.Do(func() {
 		err = w.shared.receiver.Shutdown(ctx)
+		store.remove(w.shared.id)
 	})
 	return err
 }

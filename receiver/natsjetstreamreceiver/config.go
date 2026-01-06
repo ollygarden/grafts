@@ -76,6 +76,10 @@ func (cfg *Config) Validate() error {
 		return errors.New("ping_interval must be positive")
 	}
 
+	if cfg.Subjects.Traces == "" && cfg.Subjects.Metrics == "" && cfg.Subjects.Logs == "" {
+		return errors.New("at least one subject pattern (traces, metrics, logs) must be configured")
+	}
+
 	return nil
 }
 
