@@ -1,7 +1,7 @@
 .PHONY: test lint fmt tidy build
 
 # All component modules
-MODULES := receiver/natsjetstreamreceiver
+MODULES := receiver/natsjetstreamreceiver exporter/natsjetstreamexporter
 
 # Run tests for all components
 test:

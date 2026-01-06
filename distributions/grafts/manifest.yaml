@@ -24,6 +24,10 @@ exporters:
   - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.143.0
   - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.143.0
 
+  # NATS JetStream exporter (from main module)
+  - gomod: go.olly.garden/grafts/exporter/natsjetstreamexporter v0.0.0
+    path: ../../exporter/natsjetstreamexporter
+
 extensions:
   # Health and observability
   - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.143.0
@@ -41,6 +45,7 @@ providers:
 conf_resolver:
   default_uri_scheme: env
 
-# Replace directive to use local receiver from parent module
+# Replace directives to use local components from parent module
 replaces:
   - go.olly.garden/grafts/receiver/natsjetstreamreceiver => ../../receiver/natsjetstreamreceiver
+  - go.olly.garden/grafts/exporter/natsjetstreamexporter => ../../exporter/natsjetstreamexporter
