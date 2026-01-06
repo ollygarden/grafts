@@ -2,3 +2,6 @@ dist
 local
 bin
 vendor
+
+# Distribution build artifacts
+distributions/*/build/

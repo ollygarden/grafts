@@ -2,9 +2,25 @@
 
 Custom OpenTelemetry Collector components for OllyGarden.
 
-## Overview
+## Components
 
-This repository contains custom receivers, processors, exporters, and extensions for the OpenTelemetry Collector.
+### Receivers
+
+| Component | Status | Description |
+|-----------|--------|-------------|
+| [natsjetstreamreceiver](receiver/natsjetstreamreceiver/) | Alpha | Consumes traces, metrics, and logs from NATS JetStream streams |
+
+## Building
+
+A test distribution is available under `distributions/grafts/` for local development:
+
+```bash
+cd distributions/grafts
+make build   # Build the collector
+make run     # Run with sample config
+```
+
+For production use, see [OllyGarden Tulip](https://olly.garden/tulip).
 
 ## Questions and Answers
 
