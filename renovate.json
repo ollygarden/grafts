@@ -1,0 +1,28 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "postUpdateOptions": ["gomodTidy"],
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "extends": ["schedule:weekly"]
+    },
+    {
+      "matchSourceUrls": [
+        "github.com/open-telemetry/opentelemetry-go",
+        "github.com/open-telemetry/opentelemetry-go-contrib"
+      ],
+      "groupName": "otel upstream dependencies",
+      "extends": ["schedule:weekly"]
+    },
+    {
+      "matchSourceUrls": [
+        "github.com/open-telemetry/opentelemetry-collector",
+        "github.com/open-telemetry/opentelemetry-collector-contrib"
+      ],
+      "groupName": "otel collector dependencies",
+      "extends": ["schedule:weekly"]
+    }
+  ]
+}
