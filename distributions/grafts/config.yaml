@@ -1,7 +1,13 @@
 receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+      http:
+        endpoint: "0.0.0.0:4318"
+
   natsjetstream:
     url: "nats://localhost:4222"
-    domain: "production"
     stream: "telemetry"
     consumer_name: "grafts"
     subjects:
@@ -11,16 +17,22 @@ receivers:
 
 exporters:
   debug:
-    verbosity: basic
+    verbosity: detailed
+
+  natsjetstream:
+    url: "nats://localhost:4222"
+    stream: "telemetry"
+    subjects:
+      traces: "otlp.proto.traces"
+      metrics: "otlp.proto.metrics"
+      logs: "otlp.proto.logs"
+    publish_async: true
 
 service:
   pipelines:
-    traces:
-      receivers: [natsjetstream]
-      exporters: [debug]
-    metrics:
-      receivers: [natsjetstream]
-      exporters: [debug]
-    logs:
+    traces/ingest-to-nats:
+      receivers: [otlp]
+      exporters: [natsjetstream]
+    traces/ingest-from-nats:
       receivers: [natsjetstream]
       exporters: [debug]
