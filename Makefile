@@ -1,35 +1,29 @@
 .PHONY: test lint fmt tidy build
 
-# All component modules
-MODULES := receiver/natsjetstreamreceiver exporter/natsjetstreamexporter
+# All component packages
+PACKAGES := ./receiver/... ./exporter/...
 
 # Run tests for all components
 test:
-	@for mod in $(MODULES); do \
-		echo "Testing $$mod..."; \
-		(cd $$mod && go test -v ./...) || exit 1; \
-	done
+	@echo "Testing receiver/natsjetstreamreceiver..."
+	@go test -v ./receiver/natsjetstreamreceiver/...
+	@echo "Testing exporter/natsjetstreamexporter..."
+	@go test -v ./exporter/natsjetstreamexporter/...
 
 # Run linter for all components
 lint:
-	@for mod in $(MODULES); do \
-		echo "Linting $$mod..."; \
-		(cd $$mod && golangci-lint run ./...) || exit 1; \
-	done
+	@echo "Linting receiver/natsjetstreamreceiver..."
+	@golangci-lint run ./receiver/natsjetstreamreceiver/...
+	@echo "Linting exporter/natsjetstreamexporter..."
+	@golangci-lint run ./exporter/natsjetstreamexporter/...
 
 # Format all components
 fmt:
-	@for mod in $(MODULES); do \
-		echo "Formatting $$mod..."; \
-		(cd $$mod && go fmt ./...) || exit 1; \
-	done
+	@go fmt $(PACKAGES)
 
-# Run go mod tidy for all components
+# Run go mod tidy
 tidy:
-	@for mod in $(MODULES); do \
-		echo "Tidying $$mod..."; \
-		(cd $$mod && go mod tidy) || exit 1; \
-	done
+	@go mod tidy
 
 # Build the test distribution
 build:
