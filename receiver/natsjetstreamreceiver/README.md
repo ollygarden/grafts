@@ -6,7 +6,7 @@ The NATS JetStream receiver consumes telemetry data (traces, metrics, logs) from
 
 - Multi-signal support: traces, metrics, and logs in a single receiver instance
 - Pull-based consumption with JetStream consumers for backpressure control
-- OTLP protobuf format support (OllyGarden standard)
+- OTLP protobuf format support
 - Horizontal scaling via queue groups (enabled by default)
 - Reliable message delivery with ack/nak handling
 - Graceful shutdown with message draining
@@ -107,30 +107,6 @@ The receiver automatically reports metrics via OpenTelemetry Collector's receive
 - `otelcol_receiver_refused_log_records`
 
 ## Example Configurations
-
-### OllyGarden Deployment
-
-```yaml
-receivers:
-  natsjetstream:
-    url: "nats://nats:4222"
-    domain: "production"           # Required for clustered NATS
-    stream: "ollygarden"
-    consumer_name: "bamboo"
-    subjects:
-      traces: "og.*.in.otlp.proto.traces"
-      metrics: "og.*.in.otlp.proto.metrics"
-      logs: "og.*.in.otlp.proto.logs"
-
-service:
-  pipelines:
-    traces:
-      receivers: [natsjetstream]
-    metrics:
-      receivers: [natsjetstream]
-    logs:
-      receivers: [natsjetstream]
-```
 
 ### Split Streams (Multiple Instances)
 
