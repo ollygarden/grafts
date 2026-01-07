@@ -10,6 +10,12 @@ Custom OpenTelemetry Collector components for OllyGarden.
 |-----------|--------|-------------|
 | [natsjetstreamreceiver](receiver/natsjetstreamreceiver/) | Alpha | Consumes traces, metrics, and logs from NATS JetStream streams |
 
+### Exporters
+
+| Component | Status | Description |
+|-----------|--------|-------------|
+| [natsjetstreamexporter](exporter/natsjetstreamexporter/) | Alpha | Publishes traces, metrics, and logs to NATS JetStream streams |
+
 ## Building
 
 A test distribution is available under `distributions/grafts/` for local development:

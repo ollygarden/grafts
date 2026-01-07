@@ -62,11 +62,29 @@ Key files:
 - `factory.go`: Receiver factory with shared instance management via `sync.Once`
 - `receiver.go`: Two-phase initialization (create consumers, then start loops) with graceful shutdown
 
+**NATS JetStream Exporter** (`exporter/natsjetstreamexporter/`):
+- Publishes traces, metrics, and logs to NATS JetStream streams
+- Supports sync and async publishing modes for throughput/reliability trade-offs
+- OTLP protobuf format compatible with natsjetstreamreceiver
+- Supports JetStream domains for clustered NATS deployments
+
+Key files:
+- `config.go`: Configuration struct with validation
+- `factory.go`: Exporter factory
+- `exporter.go`: Publishing logic with sync/async modes and error classification
+
 ## Configuration
 
-The NATS JetStream receiver requires:
+**NATS JetStream Receiver** requires:
 - `url`: NATS server URL
 - `stream`: JetStream stream name (must exist)
 - `consumer_name`: Durable consumer name prefix
 - `domain`: JetStream domain (required for clustered NATS deployments)
 - `subjects.traces/metrics/logs`: Subject patterns per signal type
+
+**NATS JetStream Exporter** requires:
+- `url`: NATS server URL
+- `stream`: JetStream stream name (must exist)
+- `domain`: JetStream domain (required for clustered NATS deployments)
+- `subjects.traces/metrics/logs`: Subject patterns per signal type
+- `publish_async`: Whether to use async publishing (default: true)
