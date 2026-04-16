@@ -1,0 +1,28 @@
+receivers:
+  snmp:
+    collection_interval: 30s
+    timeout: 10s
+    retries: 3
+    max_repetitions: 50
+    auth:
+      public_v2c:
+        version: v2c
+        community: public
+    targets:
+      - host: 192.168.1.1
+        port: 161
+        auth: public_v2c
+        metric_groups:
+          - interface_stats
+    metric_groups:
+      interface_stats:
+        walk: "1.3.6.1.2.1.2.2"
+        metrics:
+          - oid: "1.3.6.1.2.1.2.2.1.10"
+            metric_name: snmp.interface.in_octets
+            type: gauge
+            unit: "By"
+            description: "Total number of octets received on the interface"
+        attributes:
+          - oid: "1.3.6.1.2.1.2.2.1.2"
+            name: interface_name
