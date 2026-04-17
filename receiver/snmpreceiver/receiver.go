@@ -65,6 +65,11 @@ func (r *snmpReceiver) Start(ctx context.Context, _ component.Host) error {
 	if r.nextMetrics != nil && len(r.config.Targets) > 0 {
 		targets, err := r.buildTargetDefs(ctx)
 		if err != nil {
+			// Close any connections opened before the failure.
+			for _, conn := range r.connections {
+				_ = conn.Close()
+			}
+			r.connections = nil
 			cancel()
 			return fmt.Errorf("failed to build target definitions: %w", err)
 		}
@@ -109,7 +114,7 @@ func (r *snmpReceiver) Shutdown(_ context.Context) error {
 	}
 	r.shutdownWG.Wait()
 	for _, conn := range r.connections {
-		conn.Close()
+		_ = conn.Close()
 	}
 	r.settings.Logger.Info("SNMP receiver shutdown complete")
 	return nil

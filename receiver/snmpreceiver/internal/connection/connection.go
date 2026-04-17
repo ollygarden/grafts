@@ -2,10 +2,16 @@ package connection
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gosnmp/gosnmp"
 )
+
+// normalizeOID strips the leading dot that gosnmp adds to OID names.
+func normalizeOID(oid string) string {
+	return strings.TrimPrefix(oid, ".")
+}
 
 // Version represents the SNMP version to use.
 type Version string
@@ -108,7 +114,7 @@ func (w *GosnmpWrapper) Get(oids []string) (map[string]interface{}, error) {
 		if pdu.Type == gosnmp.NoSuchObject || pdu.Type == gosnmp.NoSuchInstance {
 			continue
 		}
-		values[pdu.Name] = pdu.Value
+		values[normalizeOID(pdu.Name)] = pdu.Value
 	}
 	return values, nil
 }
@@ -122,7 +128,7 @@ func (w *GosnmpWrapper) Walk(oid string) (map[string]interface{}, error) {
 		if pdu.Type == gosnmp.NoSuchObject || pdu.Type == gosnmp.NoSuchInstance {
 			return nil
 		}
-		values[pdu.Name] = pdu.Value
+		values[normalizeOID(pdu.Name)] = pdu.Value
 		return nil
 	}
 
@@ -149,9 +155,15 @@ func (w *GosnmpWrapper) Close() error {
 
 // mapAuthProtocol maps a string auth protocol name to a gosnmp SnmpV3AuthProtocol.
 func mapAuthProtocol(protocol string) gosnmp.SnmpV3AuthProtocol {
-	switch protocol {
+	switch strings.ToUpper(protocol) {
 	case "SHA":
 		return gosnmp.SHA
+	case "SHA256":
+		return gosnmp.SHA256
+	case "SHA384":
+		return gosnmp.SHA384
+	case "SHA512":
+		return gosnmp.SHA512
 	case "MD5":
 		return gosnmp.MD5
 	default:
@@ -161,9 +173,13 @@ func mapAuthProtocol(protocol string) gosnmp.SnmpV3AuthProtocol {
 
 // mapPrivacyProtocol maps a string privacy protocol name to a gosnmp SnmpV3PrivProtocol.
 func mapPrivacyProtocol(protocol string) gosnmp.SnmpV3PrivProtocol {
-	switch protocol {
+	switch strings.ToUpper(protocol) {
 	case "AES":
 		return gosnmp.AES
+	case "AES192":
+		return gosnmp.AES192
+	case "AES256":
+		return gosnmp.AES256
 	case "DES":
 		return gosnmp.DES
 	default:

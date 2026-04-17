@@ -82,6 +82,10 @@ func (cfg *Config) Validate() error {
 		return errors.New("at least one target or trap_listener must be configured")
 	}
 
+	if len(cfg.Targets) > 0 && cfg.CollectionInterval <= 0 {
+		return errors.New("collection_interval must be positive")
+	}
+
 	// Validate auth configs
 	for name, auth := range cfg.Auth {
 		if auth.Version != "v2c" && auth.Version != "v3" {
@@ -100,10 +104,11 @@ func (cfg *Config) Validate() error {
 		if target.Host == "" {
 			return fmt.Errorf("target[%d]: host is required", i)
 		}
-		if target.Auth != "" {
-			if _, ok := cfg.Auth[target.Auth]; !ok {
-				return fmt.Errorf("target[%d]: auth %q not found in auth configs", i, target.Auth)
-			}
+		if target.Auth == "" {
+			return fmt.Errorf("target[%d]: auth is required", i)
+		}
+		if _, ok := cfg.Auth[target.Auth]; !ok {
+			return fmt.Errorf("target[%d]: auth %q not found in auth configs", i, target.Auth)
 		}
 		for _, mg := range target.MetricGroups {
 			if _, ok := cfg.MetricGroups[mg]; !ok {
@@ -119,6 +124,9 @@ func (cfg *Config) Validate() error {
 		"up_down_counter":  true,
 	}
 	for name, mg := range cfg.MetricGroups {
+		if len(mg.Metrics) == 0 {
+			return fmt.Errorf("metric_group %q: at least one metric is required", name)
+		}
 		for j, metric := range mg.Metrics {
 			if metric.OID == "" {
 				return fmt.Errorf("metric_group %q metric[%d]: oid is required", name, j)
@@ -126,7 +134,10 @@ func (cfg *Config) Validate() error {
 			if metric.MetricName == "" {
 				return fmt.Errorf("metric_group %q metric[%d]: metric_name is required", name, j)
 			}
-			if metric.Type != "" && !validTypes[metric.Type] {
+			if metric.Type == "" {
+				return fmt.Errorf("metric_group %q metric[%d]: type is required", name, j)
+			}
+			if !validTypes[metric.Type] {
 				return fmt.Errorf("metric_group %q metric[%d]: type must be counter, gauge, or up_down_counter, got %q", name, j, metric.Type)
 			}
 		}

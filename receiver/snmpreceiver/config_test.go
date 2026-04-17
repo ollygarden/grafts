@@ -33,12 +33,25 @@ func TestValidateRequiresTargetsOrTrapListener(t *testing.T) {
 
 func TestValidateTargetRequiresHost(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
+	cfg.Auth = map[string]AuthConfig{
+		"test": {Version: "v2c", Community: "public"},
+	}
 	cfg.Targets = []TargetConfig{
-		{Port: 161},
+		{Port: 161, Auth: "test"},
 	}
 	err := cfg.Validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "host is required")
+}
+
+func TestValidateTargetRequiresAuth(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.Targets = []TargetConfig{
+		{Host: "10.0.0.1"},
+	}
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "auth is required")
 }
 
 func TestValidateTargetRequiresValidAuth(t *testing.T) {
@@ -82,7 +95,7 @@ func TestValidateAuthV2cRequiresCommunity(t *testing.T) {
 		"auth1": {Version: "v2c"},
 	}
 	cfg.Targets = []TargetConfig{
-		{Host: "10.0.0.1"},
+		{Host: "10.0.0.1", Auth: "auth1"},
 	}
 	err := cfg.Validate()
 	require.Error(t, err)
@@ -95,7 +108,7 @@ func TestValidateAuthV3RequiresUsername(t *testing.T) {
 		"auth1": {Version: "v3"},
 	}
 	cfg.Targets = []TargetConfig{
-		{Host: "10.0.0.1"},
+		{Host: "10.0.0.1", Auth: "auth1"},
 	}
 	err := cfg.Validate()
 	require.Error(t, err)
@@ -108,7 +121,7 @@ func TestValidateAuthInvalidVersion(t *testing.T) {
 		"auth1": {Version: "v1", Community: "public"},
 	}
 	cfg.Targets = []TargetConfig{
-		{Host: "10.0.0.1"},
+		{Host: "10.0.0.1", Auth: "auth1"},
 	}
 	err := cfg.Validate()
 	require.Error(t, err)
@@ -117,6 +130,9 @@ func TestValidateAuthInvalidVersion(t *testing.T) {
 
 func TestValidateMetricRequiresFields(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
+	cfg.Auth = map[string]AuthConfig{
+		"test": {Version: "v2c", Community: "public"},
+	}
 	cfg.MetricGroups = map[string]MetricGroupConfig{
 		"group1": {
 			Metrics: []MetricConfig{
@@ -125,15 +141,38 @@ func TestValidateMetricRequiresFields(t *testing.T) {
 		},
 	}
 	cfg.Targets = []TargetConfig{
-		{Host: "10.0.0.1", MetricGroups: []string{"group1"}},
+		{Host: "10.0.0.1", Auth: "test", MetricGroups: []string{"group1"}},
 	}
 	err := cfg.Validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "oid is required")
 }
 
+func TestValidateMetricRequiresType(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.Auth = map[string]AuthConfig{
+		"test": {Version: "v2c", Community: "public"},
+	}
+	cfg.MetricGroups = map[string]MetricGroupConfig{
+		"group1": {
+			Metrics: []MetricConfig{
+				{OID: "1.3.6.1", MetricName: "test.metric"}, // missing Type
+			},
+		},
+	}
+	cfg.Targets = []TargetConfig{
+		{Host: "10.0.0.1", Auth: "test", MetricGroups: []string{"group1"}},
+	}
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "type is required")
+}
+
 func TestValidateMetricInvalidType(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
+	cfg.Auth = map[string]AuthConfig{
+		"test": {Version: "v2c", Community: "public"},
+	}
 	cfg.MetricGroups = map[string]MetricGroupConfig{
 		"group1": {
 			Metrics: []MetricConfig{
@@ -142,7 +181,7 @@ func TestValidateMetricInvalidType(t *testing.T) {
 		},
 	}
 	cfg.Targets = []TargetConfig{
-		{Host: "10.0.0.1", MetricGroups: []string{"group1"}},
+		{Host: "10.0.0.1", Auth: "test", MetricGroups: []string{"group1"}},
 	}
 	err := cfg.Validate()
 	require.Error(t, err)

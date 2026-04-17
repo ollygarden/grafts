@@ -20,7 +20,8 @@ func sendTestTrap(t *testing.T, addr, community, trapOID string) {
 	host, portStr, err := net.SplitHostPort(addr)
 	require.NoError(t, err)
 	var port uint16
-	fmt.Sscanf(portStr, "%d", &port)
+	_, err = fmt.Sscanf(portStr, "%d", &port)
+	require.NoError(t, err)
 
 	g := &gosnmp.GoSNMP{
 		Target:    host,
@@ -31,7 +32,7 @@ func sendTestTrap(t *testing.T, addr, community, trapOID string) {
 	}
 	err = g.Connect()
 	require.NoError(t, err)
-	defer g.Conn.Close()
+	defer func() { _ = g.Conn.Close() }()
 
 	trap := gosnmp.SnmpTrap{
 		Variables: []gosnmp.SnmpPDU{
@@ -49,7 +50,7 @@ func allocateUDPPort(t *testing.T) string {
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	require.NoError(t, err)
 	addr := conn.LocalAddr().String()
-	conn.Close()
+	require.NoError(t, conn.Close())
 	return addr
 }
 

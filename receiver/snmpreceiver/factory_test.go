@@ -42,7 +42,8 @@ func TestCreateLogsReceiver(t *testing.T) {
 	t.Cleanup(func() { store.receivers = make(map[component.ID]*sharedReceiver) })
 
 	factory := NewFactory()
-	cfg := validConfigWithTrapListener()
+	cfg := validConfig()
+	cfg.TrapListener = &TrapListenerConfig{ListenAddress: "0.0.0.0:1162", AcceptedAuth: []string{"test"}}
 	settings := receivertest.NewNopSettings(factory.Type())
 
 	r, err := factory.CreateLogs(context.Background(), settings, cfg, consumertest.NewNop())
@@ -54,7 +55,8 @@ func TestSharedReceiverInstance(t *testing.T) {
 	t.Cleanup(func() { store.receivers = make(map[component.ID]*sharedReceiver) })
 
 	factory := NewFactory()
-	cfg := validConfigWithTrapListener()
+	cfg := validConfig()
+	cfg.TrapListener = &TrapListenerConfig{ListenAddress: "0.0.0.0:1162", AcceptedAuth: []string{"test"}}
 	settings := receivertest.NewNopSettings(factory.Type())
 
 	metricsReceiver, err := factory.CreateMetrics(context.Background(), settings, cfg, consumertest.NewNop())
@@ -84,17 +86,14 @@ func validConfig() *Config {
 		Timeout:            createDefaultConfig().(*Config).Timeout,
 		Retries:            createDefaultConfig().(*Config).Retries,
 		MaxRepetitions:     createDefaultConfig().(*Config).MaxRepetitions,
+		Auth: map[string]AuthConfig{
+			"test": {Version: "v2c", Community: "public"},
+		},
+		MetricGroups: map[string]MetricGroupConfig{
+			"sys": {Metrics: []MetricConfig{{OID: "1.2.3", MetricName: "test", Type: "gauge"}}},
+		},
 		Targets: []TargetConfig{
-			{Host: "192.168.1.1", Port: 161},
+			{Host: "192.168.1.1", Port: 161, Auth: "test", MetricGroups: []string{"sys"}},
 		},
 	}
-}
-
-// validConfigWithTrapListener returns a valid config that includes a trap listener.
-func validConfigWithTrapListener() *Config {
-	cfg := validConfig()
-	cfg.TrapListener = &TrapListenerConfig{
-		ListenAddress: "0.0.0.0:1162",
-	}
-	return cfg
 }

@@ -18,7 +18,7 @@ func allocateUDPPort(t *testing.T) string {
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	require.NoError(t, err)
 	addr := conn.LocalAddr().String()
-	conn.Close()
+	require.NoError(t, conn.Close())
 	return addr
 }
 

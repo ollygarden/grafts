@@ -69,7 +69,7 @@ func BuildLog(trap TrapData) plog.Logs {
 	}
 
 	if trap.Uptime > 0 {
-		attrs.PutInt("snmp.uptime", trap.Uptime)
+		attrs.PutInt("snmp.trap.uptime", trap.Uptime)
 	}
 
 	if info, ok := wellKnownTraps[trap.TrapOID]; ok {

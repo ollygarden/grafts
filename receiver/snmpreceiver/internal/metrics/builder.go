@@ -4,6 +4,7 @@ package metrics
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -111,7 +112,11 @@ func setDataPointValue(dp pmetric.NumberDataPoint, value interface{}) {
 	case uint32:
 		dp.SetIntValue(int64(v))
 	case uint64:
-		dp.SetIntValue(int64(v))
+		if v > uint64(math.MaxInt64) {
+			dp.SetDoubleValue(float64(v))
+		} else {
+			dp.SetIntValue(int64(v))
+		}
 	case float32:
 		dp.SetDoubleValue(float64(v))
 	case float64:
