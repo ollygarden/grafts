@@ -3,7 +3,6 @@
 package metrics
 
 import (
-	"fmt"
 	"math"
 	"time"
 
@@ -51,13 +50,12 @@ func BuildMetrics(host string, port int, resourceAttrs map[string]string, collec
 	sm.Scope().SetName(scopeName)
 
 	for _, cm := range collected {
-		m := sm.Metrics().AppendEmpty()
-		m.SetName(cm.MetricName)
-		m.SetUnit(cm.Unit)
-		m.SetDescription(cm.Description)
-
 		switch cm.Type {
 		case "gauge":
+			m := sm.Metrics().AppendEmpty()
+			m.SetName(cm.MetricName)
+			m.SetUnit(cm.Unit)
+			m.SetDescription(cm.Description)
 			g := m.SetEmptyGauge()
 			for _, dp := range cm.DataPoints {
 				ndp := g.DataPoints().AppendEmpty()
@@ -68,6 +66,10 @@ func BuildMetrics(host string, port int, resourceAttrs map[string]string, collec
 				}
 			}
 		case "counter":
+			m := sm.Metrics().AppendEmpty()
+			m.SetName(cm.MetricName)
+			m.SetUnit(cm.Unit)
+			m.SetDescription(cm.Description)
 			s := m.SetEmptySum()
 			s.SetIsMonotonic(true)
 			s.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
@@ -80,6 +82,10 @@ func BuildMetrics(host string, port int, resourceAttrs map[string]string, collec
 				}
 			}
 		case "up_down_counter":
+			m := sm.Metrics().AppendEmpty()
+			m.SetName(cm.MetricName)
+			m.SetUnit(cm.Unit)
+			m.SetDescription(cm.Description)
 			s := m.SetEmptySum()
 			s.SetIsMonotonic(false)
 			s.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
@@ -92,8 +98,8 @@ func BuildMetrics(host string, port int, resourceAttrs map[string]string, collec
 				}
 			}
 		default:
-			// Unknown type: skip this metric but don't panic.
-			_ = fmt.Sprintf("unknown metric type %q for metric %q", cm.Type, cm.MetricName)
+			// Unknown type: skip without appending an empty metric.
+			continue
 		}
 	}
 
@@ -108,7 +114,11 @@ func setDataPointValue(dp pmetric.NumberDataPoint, value interface{}) {
 	case int64:
 		dp.SetIntValue(v)
 	case uint:
-		dp.SetIntValue(int64(v))
+		if uint64(v) > uint64(math.MaxInt64) {
+			dp.SetDoubleValue(float64(v))
+		} else {
+			dp.SetIntValue(int64(v))
+		}
 	case uint32:
 		dp.SetIntValue(int64(v))
 	case uint64:

@@ -76,13 +76,22 @@ func NewConnection(params Params) (Connection, error) {
 	switch params.Version {
 	case V3:
 		client.Version = gosnmp.Version3
-		client.MsgFlags = gosnmp.AuthPriv
 		client.SecurityModel = gosnmp.UserSecurityModel
+		authProto := mapAuthProtocol(params.AuthProtocol)
+		privProto := mapPrivacyProtocol(params.PrivacyProtocol)
+		switch {
+		case authProto != gosnmp.NoAuth && privProto != gosnmp.NoPriv:
+			client.MsgFlags = gosnmp.AuthPriv
+		case authProto != gosnmp.NoAuth:
+			client.MsgFlags = gosnmp.AuthNoPriv
+		default:
+			client.MsgFlags = gosnmp.NoAuthNoPriv
+		}
 		client.SecurityParameters = &gosnmp.UsmSecurityParameters{
 			UserName:                 params.Username,
-			AuthenticationProtocol:   mapAuthProtocol(params.AuthProtocol),
+			AuthenticationProtocol:   authProto,
 			AuthenticationPassphrase: params.AuthPassphrase,
-			PrivacyProtocol:          mapPrivacyProtocol(params.PrivacyProtocol),
+			PrivacyProtocol:          privProto,
 			PrivacyPassphrase:        params.PrivacyPassphrase,
 		}
 	default: // V2c and anything else defaults to V2c
