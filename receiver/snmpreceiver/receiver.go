@@ -13,6 +13,7 @@ import (
 
 	"go.olly.garden/grafts/receiver/snmpreceiver/internal/connection"
 	"go.olly.garden/grafts/receiver/snmpreceiver/internal/poller"
+	"go.olly.garden/grafts/receiver/snmpreceiver/internal/trapper"
 )
 
 // snmpReceiver implements a receiver that polls SNMP targets for metrics
@@ -79,9 +80,23 @@ func (r *snmpReceiver) Start(ctx context.Context, _ component.Host) error {
 	}
 
 	if r.nextLogs != nil && r.config.TrapListener != nil {
-		r.settings.Logger.Info("SNMP trap listener configured",
+		var authEntries []trapper.AuthEntry
+		for _, authName := range r.config.TrapListener.AcceptedAuth {
+			auth := r.config.Auth[authName]
+			authEntries = append(authEntries, trapper.AuthEntry{
+				Version:   auth.Version,
+				Community: auth.Community,
+				Username:  auth.Username,
+			})
+		}
+		tr := trapper.New(r.settings.Logger, r.config.TrapListener.ListenAddress, authEntries, r.nextLogs)
+		r.shutdownWG.Add(1)
+		go func() {
+			defer r.shutdownWG.Done()
+			tr.Run(loopCtx)
+		}()
+		r.settings.Logger.Info("SNMP trap listener started",
 			zap.String("address", r.config.TrapListener.ListenAddress))
-		// Trap wiring comes in Task 10
 	}
 
 	return nil
