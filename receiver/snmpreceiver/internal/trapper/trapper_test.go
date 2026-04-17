@@ -43,6 +43,16 @@ func sendTestTrap(t *testing.T, addr, community, trapOID string) {
 	require.NoError(t, err)
 }
 
+// allocateUDPPort finds an available UDP port on localhost.
+func allocateUDPPort(t *testing.T) string {
+	t.Helper()
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	require.NoError(t, err)
+	addr := conn.LocalAddr().String()
+	conn.Close()
+	return addr
+}
+
 // waitForListenAddr polls until the trapper resolves its listen address.
 func waitForListenAddr(t *testing.T, tr *Trapper) string {
 	t.Helper()
@@ -60,7 +70,7 @@ func waitForListenAddr(t *testing.T, tr *Trapper) string {
 func TestTrapperStartStop(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	sink := &consumertest.LogsSink{}
-	tr := New(logger, "127.0.0.1:0", nil, sink)
+	tr := New(logger, allocateUDPPort(t), nil, sink)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -84,7 +94,7 @@ func TestTrapperReceivesV2cTrap(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	sink := &consumertest.LogsSink{}
 	auth := []AuthEntry{{Version: "v2c", Community: "public"}}
-	tr := New(logger, "127.0.0.1:0", auth, sink)
+	tr := New(logger, allocateUDPPort(t), auth, sink)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -117,7 +127,7 @@ func TestTrapperRejectsWrongCommunity(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	sink := &consumertest.LogsSink{}
 	auth := []AuthEntry{{Version: "v2c", Community: "secret"}}
-	tr := New(logger, "127.0.0.1:0", auth, sink)
+	tr := New(logger, allocateUDPPort(t), auth, sink)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

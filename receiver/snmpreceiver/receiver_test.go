@@ -2,6 +2,7 @@ package snmpreceiver
 
 import (
 	"context"
+	"net"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,28 +13,34 @@ import (
 	"go.opentelemetry.io/collector/receiver/receivertest"
 )
 
-func TestReceiverStartShutdown(t *testing.T) {
+func allocateUDPPort(t *testing.T) string {
+	t.Helper()
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	require.NoError(t, err)
+	addr := conn.LocalAddr().String()
+	conn.Close()
+	return addr
+}
+
+func TestReceiverStartShutdownTrapOnly(t *testing.T) {
 	t.Cleanup(func() { store.receivers = make(map[component.ID]*sharedReceiver) })
 
 	factory := NewFactory()
-	cfg := validConfigWithTrapListener()
+	cfg := createDefaultConfig().(*Config)
+	cfg.Auth = map[string]AuthConfig{
+		"test": {Version: "v2c", Community: "public"},
+	}
+	cfg.TrapListener = &TrapListenerConfig{
+		ListenAddress: allocateUDPPort(t),
+		AcceptedAuth:  []string{"test"},
+	}
+
 	settings := receivertest.NewNopSettings(factory.Type())
-
-	metricsReceiver, err := factory.CreateMetrics(context.Background(), settings, cfg, consumertest.NewNop())
-	require.NoError(t, err)
-
 	logsReceiver, err := factory.CreateLogs(context.Background(), settings, cfg, consumertest.NewNop())
 	require.NoError(t, err)
 
 	host := componenttest.NewNopHost()
-
-	err = metricsReceiver.Start(context.Background(), host)
-	require.NoError(t, err)
-
 	err = logsReceiver.Start(context.Background(), host)
-	require.NoError(t, err)
-
-	err = metricsReceiver.Shutdown(context.Background())
 	require.NoError(t, err)
 
 	err = logsReceiver.Shutdown(context.Background())

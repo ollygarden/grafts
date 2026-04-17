@@ -55,28 +55,6 @@ func (tr *Trapper) ListenAddr() string {
 
 // Run starts the trap listener and blocks until ctx is cancelled.
 func (tr *Trapper) Run(ctx context.Context) {
-	// Resolve the listen address first so we can bind port 0 and discover
-	// the assigned port (needed by tests). We bind a UDP socket to get the
-	// resolved address, then pass the address string to gosnmp.
-	udpAddr, err := net.ResolveUDPAddr("udp", tr.listenAddr)
-	if err != nil {
-		tr.logger.Error("failed to resolve UDP address", zap.String("addr", tr.listenAddr), zap.Error(err))
-		return
-	}
-
-	// Bind early so we can capture the OS-assigned port when using port 0.
-	probe, err := net.ListenUDP("udp", udpAddr)
-	if err != nil {
-		tr.logger.Error("failed to listen on UDP", zap.String("addr", tr.listenAddr), zap.Error(err))
-		return
-	}
-	resolvedAddr := probe.LocalAddr().String()
-	probe.Close()
-
-	tr.mu.Lock()
-	tr.resolvedAddr = resolvedAddr
-	tr.mu.Unlock()
-
 	listener := gosnmp.NewTrapListener()
 	listener.OnNewTrap = tr.handleTrap
 	listener.Params = gosnmp.Default
@@ -84,22 +62,32 @@ func (tr *Trapper) Run(ctx context.Context) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		if err := listener.Listen(resolvedAddr); err != nil {
+		if err := listener.Listen(tr.listenAddr); err != nil {
 			select {
 			case <-ctx.Done():
-				// expected shutdown - Listen returns an error when closed
+				// expected shutdown
 			default:
 				tr.logger.Error("trap listener exited unexpectedly", zap.Error(err))
 			}
 		}
 	}()
 
+	// Wait for the listener to be ready
+	select {
+	case <-listener.Listening():
+		tr.mu.Lock()
+		tr.resolvedAddr = tr.listenAddr
+		tr.mu.Unlock()
+		tr.logger.Info("SNMP trap listener ready", zap.String("address", tr.listenAddr))
+	case <-done:
+		return
+	}
+
 	select {
 	case <-ctx.Done():
 		listener.Close()
 	case <-done:
 	}
-	<-done
 }
 
 // handleTrap processes an incoming SNMP trap packet.
