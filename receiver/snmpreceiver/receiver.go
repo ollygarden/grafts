@@ -2,6 +2,7 @@ package snmpreceiver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -113,11 +114,12 @@ func (r *snmpReceiver) Shutdown(_ context.Context) error {
 		r.cancel()
 	}
 	r.shutdownWG.Wait()
+	var closeErr error
 	for _, conn := range r.connections {
-		_ = conn.Close()
+		closeErr = errors.Join(closeErr, conn.Close())
 	}
 	r.settings.Logger.Info("SNMP receiver shutdown complete")
-	return nil
+	return closeErr
 }
 
 // buildTargetDefs builds poller.TargetDef entries from config, establishing SNMP connections.

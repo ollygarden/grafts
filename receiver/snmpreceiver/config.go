@@ -86,6 +86,14 @@ func (cfg *Config) Validate() error {
 		return errors.New("collection_interval must be positive")
 	}
 
+	if cfg.Timeout <= 0 {
+		return errors.New("timeout must be positive")
+	}
+
+	if cfg.Retries < 0 {
+		return errors.New("retries must be >= 0")
+	}
+
 	// Validate auth configs
 	for name, auth := range cfg.Auth {
 		if auth.Version != "v2c" && auth.Version != "v3" {
