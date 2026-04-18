@@ -61,6 +61,9 @@ func BuildMetrics(host string, port int, resourceAttrs map[string]string, collec
 			m.SetDescription(cm.Description)
 			g := m.SetEmptyGauge()
 			for _, dp := range cm.DataPoints {
+				if !isSupportedNumber(dp.Value) {
+					continue
+				}
 				ndp := g.DataPoints().AppendEmpty()
 				ndp.SetTimestamp(pcommon.NewTimestampFromTime(dp.Timestamp))
 				setDataPointValue(ndp, dp.Value)
@@ -77,6 +80,9 @@ func BuildMetrics(host string, port int, resourceAttrs map[string]string, collec
 			s.SetIsMonotonic(true)
 			s.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 			for _, dp := range cm.DataPoints {
+				if !isSupportedNumber(dp.Value) {
+					continue
+				}
 				ndp := s.DataPoints().AppendEmpty()
 				ndp.SetTimestamp(pcommon.NewTimestampFromTime(dp.Timestamp))
 				setDataPointValue(ndp, dp.Value)
@@ -93,6 +99,9 @@ func BuildMetrics(host string, port int, resourceAttrs map[string]string, collec
 			s.SetIsMonotonic(false)
 			s.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 			for _, dp := range cm.DataPoints {
+				if !isSupportedNumber(dp.Value) {
+					continue
+				}
 				ndp := s.DataPoints().AppendEmpty()
 				ndp.SetTimestamp(pcommon.NewTimestampFromTime(dp.Timestamp))
 				setDataPointValue(ndp, dp.Value)
@@ -107,6 +116,18 @@ func BuildMetrics(host string, port int, resourceAttrs map[string]string, collec
 	}
 
 	return md
+}
+
+// isSupportedNumber returns true if value is a numeric type that can be
+// assigned to a NumberDataPoint. SNMP can return strings, byte slices, and
+// other non-numeric types that should be skipped.
+func isSupportedNumber(value interface{}) bool {
+	switch value.(type) {
+	case int, int64, uint, uint32, uint64, float32, float64:
+		return true
+	default:
+		return false
+	}
 }
 
 // setDataPointValue assigns the typed value to a NumberDataPoint.
