@@ -69,11 +69,16 @@ func CollectScalarAttributes(conn connection.Connection, group MetricGroupDef) (
 
 	result := make(map[string]string, len(group.ScalarAttributes))
 	for _, attr := range group.ScalarAttributes {
-		if v, ok := values[attr.OID]; ok {
+		if v, ok := values[normalizeOID(attr.OID)]; ok {
 			result[attr.Name] = fmt.Sprintf("%v", v)
 		}
 	}
 	return result, nil
+}
+
+// normalizeOID strips a leading dot from an OID for consistent comparison.
+func normalizeOID(oid string) string {
+	return strings.TrimPrefix(oid, ".")
 }
 
 // extractIndex strips prefix+"." from fullOID and returns the remaining suffix.
@@ -100,7 +105,7 @@ func collectScalar(conn connection.Connection, group MetricGroupDef) ([]metrics.
 	now := time.Now()
 	result := make([]metrics.CollectedMetric, 0, len(group.Metrics))
 	for _, m := range group.Metrics {
-		v, ok := values[m.OID]
+		v, ok := values[normalizeOID(m.OID)]
 		if !ok {
 			continue
 		}
@@ -138,7 +143,7 @@ func collectTable(conn connection.Connection, group MetricGroupDef) ([]metrics.C
 	}
 
 	// Extract indexes from the first metric's walk results.
-	firstMetricOID := group.Metrics[0].OID
+	firstMetricOID := normalizeOID(group.Metrics[0].OID)
 	indexes := make([]string, 0, len(metricWalks[0]))
 	for fullOID := range metricWalks[0] {
 		idx := extractIndex(firstMetricOID, fullOID)
@@ -173,8 +178,9 @@ func collectTable(conn connection.Connection, group MetricGroupDef) ([]metrics.C
 	result := make([]metrics.CollectedMetric, 0, len(group.Metrics))
 	for i, m := range group.Metrics {
 		dps := make([]metrics.DataPoint, 0, len(indexes))
+		normalizedMetricOID := normalizeOID(m.OID)
 		for _, idx := range indexes {
-			fullOID := m.OID + "." + idx
+			fullOID := normalizedMetricOID + "." + idx
 			v, ok := metricWalks[i][fullOID]
 			if !ok {
 				continue
@@ -186,7 +192,8 @@ func collectTable(conn connection.Connection, group MetricGroupDef) ([]metrics.C
 
 			// Add attribute OID values.
 			for _, attr := range group.Attributes {
-				attrFullOID := attr.OID + "." + idx
+				normalizedAttrOID := normalizeOID(attr.OID)
+				attrFullOID := normalizedAttrOID + "." + idx
 				if av, ok := attrWalks[attr.OID][attrFullOID]; ok {
 					attrs[attr.Name] = fmt.Sprintf("%v", av)
 				}
@@ -194,7 +201,8 @@ func collectTable(conn connection.Connection, group MetricGroupDef) ([]metrics.C
 
 			// Add lookup label values.
 			for _, lookup := range group.Lookups {
-				lookupFullOID := lookup.LookupOID + "." + idx
+				normalizedLookupOID := normalizeOID(lookup.LookupOID)
+				lookupFullOID := normalizedLookupOID + "." + idx
 				if lv, ok := lookupWalks[lookup.LookupOID][lookupFullOID]; ok {
 					attrs[lookup.TargetLabel] = fmt.Sprintf("%v", lv)
 				}

@@ -3,6 +3,7 @@ package snmpreceiver
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/collector/component"
@@ -94,6 +95,10 @@ func (cfg *Config) Validate() error {
 		return errors.New("retries must be >= 0")
 	}
 
+	if cfg.MaxRepetitions < 0 {
+		return errors.New("max_repetitions must be >= 0")
+	}
+
 	// Validate auth configs
 	for name, auth := range cfg.Auth {
 		if auth.Version != "v2c" && auth.Version != "v3" {
@@ -102,8 +107,19 @@ func (cfg *Config) Validate() error {
 		if auth.Version == "v2c" && auth.Community == "" {
 			return fmt.Errorf("auth %q: community is required for v2c", name)
 		}
-		if auth.Version == "v3" && auth.Username == "" {
-			return fmt.Errorf("auth %q: username is required for v3", name)
+		if auth.Version == "v3" {
+			if auth.Username == "" {
+				return fmt.Errorf("auth %q: username is required for v3", name)
+			}
+			if auth.AuthProtocol != "" && !validAuthProtocol(auth.AuthProtocol) {
+				return fmt.Errorf("auth %q: auth_protocol must be MD5, SHA, SHA256, SHA384, or SHA512, got %q", name, auth.AuthProtocol)
+			}
+			if auth.PrivacyProtocol != "" && !validPrivacyProtocol(auth.PrivacyProtocol) {
+				return fmt.Errorf("auth %q: privacy_protocol must be DES, AES, AES192, or AES256, got %q", name, auth.PrivacyProtocol)
+			}
+			if auth.PrivacyProtocol != "" && auth.AuthProtocol == "" {
+				return fmt.Errorf("auth %q: auth_protocol is required when privacy_protocol is set", name)
+			}
 		}
 	}
 
@@ -111,6 +127,9 @@ func (cfg *Config) Validate() error {
 	for i, target := range cfg.Targets {
 		if target.Host == "" {
 			return fmt.Errorf("target[%d]: host is required", i)
+		}
+		if target.Port < 0 || target.Port > 65535 {
+			return fmt.Errorf("target[%d]: port must be between 0 and 65535", i)
 		}
 		if target.Auth == "" {
 			return fmt.Errorf("target[%d]: auth is required", i)
@@ -164,6 +183,22 @@ func (cfg *Config) Validate() error {
 	}
 
 	return nil
+}
+
+var validAuthProtocols = map[string]bool{
+	"MD5": true, "SHA": true, "SHA256": true, "SHA384": true, "SHA512": true,
+}
+
+func validAuthProtocol(p string) bool {
+	return validAuthProtocols[strings.ToUpper(p)]
+}
+
+var validPrivacyProtocols = map[string]bool{
+	"DES": true, "AES": true, "AES192": true, "AES256": true,
+}
+
+func validPrivacyProtocol(p string) bool {
+	return validPrivacyProtocols[strings.ToUpper(p)]
 }
 
 // createDefaultConfig creates the default configuration for the receiver.

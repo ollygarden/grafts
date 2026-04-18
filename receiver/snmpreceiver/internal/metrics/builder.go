@@ -43,6 +43,9 @@ func BuildMetrics(host string, port int, resourceAttrs map[string]string, collec
 	res.Attributes().PutStr("snmp.host", host)
 	res.Attributes().PutInt("snmp.port", int64(port))
 	for k, v := range resourceAttrs {
+		if k == "snmp.host" || k == "snmp.port" {
+			continue
+		}
 		res.Attributes().PutStr(k, v)
 	}
 
