@@ -1,0 +1,3 @@
+receivers:
+  snmp:
+    collection_interval: 60s

@@ -9,6 +9,7 @@ Custom OpenTelemetry Collector components for OllyGarden.
 | Component | Status | Description |
 |-----------|--------|-------------|
 | [natsjetstreamreceiver](receiver/natsjetstreamreceiver/) | Alpha | Consumes traces, metrics, and logs from NATS JetStream streams |
+| [snmpreceiver](receiver/snmpreceiver/) | Alpha | Polls SNMP targets for metrics and listens for traps as logs |
 
 ### Exporters
 

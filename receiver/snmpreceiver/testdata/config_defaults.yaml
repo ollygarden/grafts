@@ -1,0 +1,18 @@
+receivers:
+  snmp:
+    auth:
+      public_v2c:
+        version: v2c
+        community: public
+    targets:
+      - host: 10.0.0.1
+        auth: public_v2c
+        metric_groups:
+          - basic
+    metric_groups:
+      basic:
+        walk: "1.3.6.1.2.1.1"
+        metrics:
+          - oid: "1.3.6.1.2.1.1.3.0"
+            metric_name: snmp.system.uptime
+            type: counter

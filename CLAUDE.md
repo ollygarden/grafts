@@ -73,6 +73,23 @@ Key files:
 - `factory.go`: Exporter factory
 - `exporter.go`: Publishing logic with sync/async modes and error classification
 
+**SNMP Receiver** (`receiver/snmpreceiver/`):
+- Polls SNMP targets for metrics and listens for traps/informs as logs
+- Supports SNMPv2c and SNMPv3 with named, reusable auth configurations
+- Metric groups define OID collections with table walks, index extraction, and lookup chains
+- Trap listener converts SNMP traps to OTel log records with severity mapping
+- Uses `gosnmp/gosnmp` (pure Go, no CGo)
+
+Key files:
+- `config.go`: Configuration structs (auth, targets, metric groups, trap listener) with validation
+- `factory.go`: Receiver factory with shared instance management (metrics + logs signals)
+- `receiver.go`: Orchestrator wiring poller and trapper into lifecycle
+- `internal/connection/`: Connection interface wrapping gosnmp + mock for testing
+- `internal/poller/`: Poll scheduler (per-target goroutines) + metric group collector (GET/WALK)
+- `internal/trapper/`: UDP trap listener with auth filtering
+- `internal/metrics/`: pmetric builder (SNMP responses -> OTel metrics)
+- `internal/logs/`: plog builder (trap PDUs -> OTel logs)
+
 ## Configuration
 
 **NATS JetStream Receiver** requires:
@@ -88,3 +105,11 @@ Key files:
 - `domain`: JetStream domain (required for clustered NATS deployments)
 - `subjects.traces/metrics/logs`: Subject patterns per signal type
 - `publish_async`: Whether to use async publishing (default: true)
+
+**SNMP Receiver** requires:
+- `auth`: Named auth configurations (`v2c` with community, or `v3` with USM credentials)
+- `targets`: List of SNMP devices with host, auth reference, and metric group references
+- `metric_groups`: Named OID collections with metrics (oid, metric_name, type), attributes, lookups
+- `trap_listener` (optional): UDP listen address and accepted auth list
+- `collection_interval`: Polling interval (default: 60s)
+- `timeout`: SNMP request timeout (default: 5s)

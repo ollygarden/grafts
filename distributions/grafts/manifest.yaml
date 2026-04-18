@@ -14,6 +14,11 @@ receivers:
     import: go.olly.garden/grafts/receiver/natsjetstreamreceiver
     path: ../..
 
+  # SNMP receiver (from main module)
+  - gomod: go.olly.garden/grafts v0.1.0
+    import: go.olly.garden/grafts/receiver/snmpreceiver
+    path: ../..
+
 processors:
   # Essential processors
   - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.143.0
