@@ -3,7 +3,7 @@ module go.olly.garden/grafts
 go 1.25.0
 
 require (
-	github.com/go-viper/mapstructure/v2 v2.4.0
+	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/gosnmp/gosnmp v1.43.2
 	github.com/nats-io/nats-server/v2 v2.12.7
 	github.com/nats-io/nats.go v1.50.0
