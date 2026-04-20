@@ -18,7 +18,7 @@ require (
 	go.opentelemetry.io/collector/exporter/exportertest v0.150.0
 	go.opentelemetry.io/collector/pdata v1.56.0
 	go.opentelemetry.io/collector/receiver v1.56.0
-	go.opentelemetry.io/collector/receiver/receiverhelper v0.143.0
+	go.opentelemetry.io/collector/receiver/receiverhelper v0.150.0
 	go.opentelemetry.io/collector/receiver/receivertest v0.150.0
 	go.uber.org/zap v1.27.1
 	go.yaml.in/yaml/v3 v3.0.4

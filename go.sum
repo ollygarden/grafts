@@ -133,8 +133,8 @@ go.opentelemetry.io/collector/pipeline/xpipeline v0.150.0 h1:Bm+xm9vFRuW2kkdRj/i
 go.opentelemetry.io/collector/pipeline/xpipeline v0.150.0/go.mod h1:iPY4PBBeih6Wn9SDbgHQY9FTx6WD5FvPLMhBmgsv1lI=
 go.opentelemetry.io/collector/receiver v1.56.0 h1:xrLFO3g5/PWvHMG74li6a7Y3yT6B/OehgFsyZJmLII8=
 go.opentelemetry.io/collector/receiver v1.56.0/go.mod h1:iOpgr7vRq8R+LXRr9bLQT0jADyPEqmdJWuZTlvARWgo=
-go.opentelemetry.io/collector/receiver/receiverhelper v0.143.0 h1:uffNyPdi9p+UDXc6ETlm4XUejSP9156+S07pQ8ey1P8=
-go.opentelemetry.io/collector/receiver/receiverhelper v0.143.0/go.mod h1:HkQF7gTUK+ZtVsz9J7WyTgnXA21lVYoJSqLtF/lJ42c=
+go.opentelemetry.io/collector/receiver/receiverhelper v0.150.0 h1:8PBXFdWJ+q0XQzp0j8sDF9KbOxU+H6fNTyYHOs7yt4Q=
+go.opentelemetry.io/collector/receiver/receiverhelper v0.150.0/go.mod h1:9kYAlW71t2nJqCNTVWJvgcbT+Ad6ue2wGO7UR6cPQnI=
 go.opentelemetry.io/collector/receiver/receivertest v0.150.0 h1:D34dL/NxP+MTMWZsQCWHgAyKOUsEn1JtzU6gPmLk/oc=
 go.opentelemetry.io/collector/receiver/receivertest v0.150.0/go.mod h1:/MWpPrRvljhZpbSTOHijr69Kg1A/MhUoKX0tLZpkhgE=
 go.opentelemetry.io/collector/receiver/xreceiver v0.150.0 h1:UpgWq1saq6QWGawJzKpJfLmcv52qBLBRjsv3vcy5fLM=
