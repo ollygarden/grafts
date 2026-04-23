@@ -337,6 +337,10 @@ Each trap produces a `LogRecord` with:
 - For SNMPv3: USM credentials configured on both the device and the receiver
 - For traps: UDP port accessible from trap-sending devices (often port 162)
 
+## Running locally
+
+For a step-by-step walkthrough of building the collector, running an SNMP simulator in Docker, and verifying the receiver works end-to-end, see [TESTING.md](./TESTING.md).
+
 ## Status
 
 - **Stability Level**: Alpha
