@@ -8,20 +8,19 @@ Runtime: ~5 minutes. Requires Docker and a built `grafts` binary.
 
 ```bash
 docker run --rm -d --name snmpsim \
-  -p 1161:1161/udp \
-  ghcr.io/lextudio/snmpsim:latest \
-  --agent-udpv4-endpoint=0.0.0.0:1161
+  -p 1161:161/udp \
+  tandrup/snmpsim
 ```
 
-snmpsim ships with a default recording under community `public` that covers standard MIB-II OIDs (`sysUpTime.0`, `ifTable`, `sysName.0`). No fixture files to author.
+The container listens on UDP 161 internally; the command above maps it to host port 1161. The image ships with a default recording under community `public` covering standard MIB-II OIDs (`sysUpTime.0`, `ifTable`, `sysName.0`). No fixture files to author.
 
 Verify it's up:
 
 ```bash
-docker logs snmpsim | tail -5
+docker logs snmpsim | tail -10
 ```
 
-You should see a line like `SNMP agent at UDP/IPv4 endpoint 0.0.0.0:1161`.
+You should see a line like `Listening at UDP/IPv4 endpoint 0.0.0.0:161`.
 
 ## 2. Build the collector
 
