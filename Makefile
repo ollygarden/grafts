@@ -1,4 +1,4 @@
-.PHONY: test lint fmt tidy build
+.PHONY: test lint fmt tidy build test-integration
 
 # All component packages
 PACKAGES := ./receiver/... ./exporter/...
@@ -32,3 +32,8 @@ tidy:
 # Build the test distribution
 build:
 	$(MAKE) -C distributions/grafts build
+
+# Run integration tests (require Docker). Tests skip themselves if Docker is unavailable.
+test-integration:
+	@echo "Running integration tests..."
+	@go test -tags=integration -timeout=300s ./receiver/snmpreceiver/...

@@ -1,0 +1,54 @@
+# Collector config for manual SNMP receiver testing against snmpsim.
+# See receiver/snmpreceiver/TESTING.md for how to use this.
+receivers:
+  snmp:
+    collection_interval: 10s
+    auth:
+      public_v2c:
+        version: v2c
+        community: public
+      sim_v3:
+        version: v3
+        username: simulator
+        auth_protocol: MD5
+        auth_passphrase: auctoritas
+        privacy_protocol: DES
+        privacy_passphrase: privatus
+    targets:
+      - host: 127.0.0.1
+        port: 1161
+        auth: public_v2c
+        metric_groups: [system, interfaces]
+      - host: 127.0.0.1
+        port: 1161
+        auth: sim_v3
+        metric_groups: [system]
+    metric_groups:
+      system:
+        metrics:
+          - oid: "1.3.6.1.2.1.1.3.0"
+            metric_name: snmp.system.uptime
+            type: gauge
+            unit: "cs"
+            description: "System uptime in centiseconds"
+        scalar_attributes:
+          - oid: "1.3.6.1.2.1.1.5.0"
+            name: sys_name
+      interfaces:
+        walk: "1.3.6.1.2.1.2.2.1"
+        metrics:
+          - oid: "1.3.6.1.2.1.2.2.1.10"
+            metric_name: snmp.interface.in_octets
+            type: counter
+            unit: "By"
+            description: "Bytes received on interface"
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    metrics:
+      receivers: [snmp]
+      exporters: [debug]

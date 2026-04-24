@@ -10,7 +10,8 @@ Grafts is a collection of custom OpenTelemetry Collector components for OllyGard
 
 From the repository root:
 ```bash
-make test       # Run tests for all components
+make test              # Run tests for all components
+make test-integration  # Run Docker-backed integration tests (snmpreceiver)
 make lint       # Run linter for all components
 make fmt        # Format all components
 make tidy       # Run go mod tidy for all components
