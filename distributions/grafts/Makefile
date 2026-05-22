@@ -1,6 +1,6 @@
 .PHONY: build install-ocb run clean
 
-OCB_VERSION ?= 0.143.0
+OCB_VERSION ?= 0.151.0
 BINARY_NAME = grafts
 
 # Install ocb if not present
