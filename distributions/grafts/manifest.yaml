@@ -7,7 +7,7 @@ dist:
 
 receivers:
   # Core OTLP receiver
-  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.143.0
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.151.0
 
   # NATS JetStream receiver (from main module)
   - gomod: go.olly.garden/grafts v0.1.0
@@ -21,14 +21,14 @@ receivers:
 
 processors:
   # Essential processors
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.143.0
-  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.143.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.151.0
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.151.0
 
 exporters:
   # Core exporters
-  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.143.0
-  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.143.0
-  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.143.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.151.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.151.0
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.151.0
 
   # NATS JetStream exporter (from main module)
   - gomod: go.olly.garden/grafts v0.1.0
@@ -37,17 +37,17 @@ exporters:
 
 extensions:
   # Health and observability
-  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.143.0
+  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.151.0
 
 connectors:
   # Forward connector for pipeline bridging
-  - gomod: go.opentelemetry.io/collector/connector/forwardconnector v0.143.0
+  - gomod: go.opentelemetry.io/collector/connector/forwardconnector v0.151.0
 
 providers:
   # Configuration providers
-  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.49.0
-  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.49.0
-  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.49.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.57.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.57.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.57.0
 
 conf_resolver:
   default_uri_scheme: env
