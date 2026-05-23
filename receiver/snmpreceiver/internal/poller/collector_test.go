@@ -93,10 +93,10 @@ func TestCollectTableMetricGroup(t *testing.T) {
 func TestCollectWithLookups(t *testing.T) {
 	mock := connection.NewMockConnection()
 	mock.SetValues(map[string]interface{}{
-		"1.3.6.1.2.1.2.2.1.10.1":    uint64(1000),
-		"1.3.6.1.2.1.2.2.1.10.2":    uint64(2000),
-		"1.3.6.1.2.1.31.1.1.1.1.1":  "eth0",
-		"1.3.6.1.2.1.31.1.1.1.1.2":  "eth1",
+		"1.3.6.1.2.1.2.2.1.10.1":   uint64(1000),
+		"1.3.6.1.2.1.2.2.1.10.2":   uint64(2000),
+		"1.3.6.1.2.1.31.1.1.1.1.1": "eth0",
+		"1.3.6.1.2.1.31.1.1.1.1.2": "eth1",
 	})
 
 	group := MetricGroupDef{

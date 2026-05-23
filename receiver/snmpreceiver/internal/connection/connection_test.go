@@ -38,10 +38,10 @@ func TestMockConnectionGetUnknownOID(t *testing.T) {
 func TestMockConnectionWalk(t *testing.T) {
 	mock := NewMockConnection()
 	mock.SetValues(map[string]interface{}{
-		".1.3.6.1.2.1.2.2.1.1":   1,
-		".1.3.6.1.2.1.2.2.1.2":   2,
-		".1.3.6.1.2.1.2.2.1.3":   3,
-		".1.3.6.1.9999.1.1":      "different subtree",
+		".1.3.6.1.2.1.2.2.1.1": 1,
+		".1.3.6.1.2.1.2.2.1.2": 2,
+		".1.3.6.1.2.1.2.2.1.3": 3,
+		".1.3.6.1.9999.1.1":    "different subtree",
 	})
 
 	result, err := mock.Walk(".1.3.6.1.2.1.2.2.1")

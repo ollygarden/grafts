@@ -42,11 +42,11 @@ type TargetConfig struct {
 
 // MetricGroupConfig defines a group of SNMP OIDs to collect together.
 type MetricGroupConfig struct {
-	Walk             string           `mapstructure:"walk"`
-	Metrics          []MetricConfig   `mapstructure:"metrics"`
+	Walk             string            `mapstructure:"walk"`
+	Metrics          []MetricConfig    `mapstructure:"metrics"`
 	Attributes       []AttributeConfig `mapstructure:"attributes"`
 	ScalarAttributes []AttributeConfig `mapstructure:"scalar_attributes"`
-	Lookups          []LookupConfig   `mapstructure:"lookups"`
+	Lookups          []LookupConfig    `mapstructure:"lookups"`
 }
 
 // MetricConfig defines how to map a single SNMP OID to an OTel metric.
@@ -146,9 +146,9 @@ func (cfg *Config) Validate() error {
 
 	// Validate metric groups
 	validTypes := map[string]bool{
-		"counter":          true,
-		"gauge":            true,
-		"up_down_counter":  true,
+		"counter":         true,
+		"gauge":           true,
+		"up_down_counter": true,
 	}
 	for name, mg := range cfg.MetricGroups {
 		if len(mg.Metrics) == 0 {
