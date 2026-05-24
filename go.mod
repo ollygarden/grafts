@@ -6,7 +6,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/gosnmp/gosnmp v1.43.2
 	github.com/nats-io/nats-server/v2 v2.14.1
-	github.com/nats-io/nats.go v1.51.0
+	github.com/nats-io/nats.go v1.52.0
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.42.0
 	go.opentelemetry.io/collector/component v1.58.0
