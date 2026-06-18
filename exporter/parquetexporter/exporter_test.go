@@ -12,6 +12,19 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
+func TestShutdownIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	cfg := createDefaultConfig().(*Config)
+	cfg.Directory = dir
+
+	exp, err := newParquetExporter(cfg, exportertest.NewNopSettings(exportertest.NopType))
+	require.NoError(t, err)
+	require.NoError(t, exp.Start(context.Background(), componenttest.NewNopHost()))
+
+	require.NoError(t, exp.Shutdown(context.Background()))
+	require.NoError(t, exp.Shutdown(context.Background())) // must not panic
+}
+
 func TestExporterWritesTraces(t *testing.T) {
 	dir := t.TempDir()
 	cfg := createDefaultConfig().(*Config)

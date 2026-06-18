@@ -24,9 +24,10 @@ type parquetExporter struct {
 	logs    *signalWriter
 	metrics map[metricKind]*signalWriter
 
-	ticker *time.Ticker
-	done   chan struct{}
-	wg     sync.WaitGroup
+	ticker       *time.Ticker
+	done         chan struct{}
+	wg           sync.WaitGroup
+	shutdownOnce sync.Once
 }
 
 func newParquetExporter(cfg *Config, set exporter.Settings) (*parquetExporter, error) {
@@ -104,6 +105,11 @@ func (e *parquetExporter) rotateAllForAge() {
 	}
 }
 
+// allWriters returns all signal writers managed by this exporter. It may
+// contain nil entries before Start completes or after a partial Start failure;
+// callers that dereference writers (rotateAllForAge) rely on the ticker only
+// running after a successful Start, and Shutdown guards each entry with a
+// w == nil check.
 func (e *parquetExporter) allWriters() []*signalWriter {
 	ws := []*signalWriter{e.traces, e.logs}
 	for _, w := range e.metrics {
@@ -113,11 +119,13 @@ func (e *parquetExporter) allWriters() []*signalWriter {
 }
 
 func (e *parquetExporter) Shutdown(_ context.Context) error {
-	if e.ticker != nil {
-		close(e.done)
-		e.ticker.Stop()
-		e.wg.Wait()
-	}
+	e.shutdownOnce.Do(func() {
+		if e.ticker != nil {
+			close(e.done)
+			e.ticker.Stop()
+			e.wg.Wait()
+		}
+	})
 	var firstErr error
 	for _, w := range e.allWriters() {
 		if w == nil {
@@ -150,12 +158,16 @@ func (e *parquetExporter) pushLogs(_ context.Context, ld plog.Logs) error {
 
 func (e *parquetExporter) pushMetrics(_ context.Context, md pmetric.Metrics) error {
 	recs := metricsToRecords(md)
+	defer func() {
+		for _, rec := range recs {
+			rec.Release()
+		}
+	}()
+	var firstErr error
 	for kind, rec := range recs {
-		err := e.metrics[kind].write(rec)
-		rec.Release()
-		if err != nil {
-			return err
+		if err := e.metrics[kind].write(rec); err != nil && firstErr == nil {
+			firstErr = err
 		}
 	}
-	return nil
+	return firstErr
 }
