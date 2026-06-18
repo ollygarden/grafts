@@ -17,6 +17,8 @@
 - Timestamps stored as `arrow.PrimitiveTypes.Int64` unix-nanoseconds (column type `BIGINT` in DuckDB) for exact parity; DuckDB converts with `make_timestamp_ns()` when needed.
 - Each OTLP batch is written as exactly one Parquet row group (`fw.Write(rec)`), so on-disk file size after each write is accurate via `os.File.Stat().Size()`.
 - Follow the conventions of `exporter/natsjetstreamexporter` (factory shape, `Config.Validate()`, `Start`/`Shutdown` lifecycle, `_test.go` layout, `doc.go`, `README.md`).
+- Tests use `github.com/stretchr/testify` (already at `v1.11.1` in the repo): `require` for fatal preconditions (setup, "must not error before we can assert"), `assert` for value checks. No hand-rolled assertion helpers.
+- Component self-telemetry: metrics via the meter from `set.TelemetrySettings.MeterProvider` (scope `go.olly.garden/grafts/exporter/parquetexporter`); diagnostic logs via the `set.Logger` (zap). Do NOT duplicate `exporterhelper`'s generic `otelcol_exporter_sent_*` / `otelcol_exporter_send_failed_*`; custom metrics cover file rotation and I/O failure only. No custom spans (the `exporterhelper` export span owns the push boundary; age-triggered rotations have no trace context). All metric attribute values are bounded — file paths appear in logs only.
 - Run `make fmt` before each commit; commits are frequent and scoped per task.
 
 ## File Structure
@@ -26,6 +28,8 @@ All under `exporter/parquetexporter/`:
 - `doc.go` — package doc + import path comment.
 - `config.go` — `Config`, `Compression` constants, `Validate()`, `createDefaultConfig()`.
 - `config_test.go` — default + validation tests.
+- `telemetry.go` — `telemetry` instruments struct, `newTelemetry`, `recordRotation`/`recordError`, `classifyError`, scope/reason/operation consts.
+- `telemetry_test.go` — instrument emission + error-classification tests.
 - `factory.go` — `NewFactory()` and the three signal creators.
 - `factory_test.go` — factory creation tests.
 - `writer.go` — `signalWriter` (open/rotate/close, atomic rename, threshold checks) and `newWriterProperties`.
@@ -74,22 +78,16 @@ package parquetexporter
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDefaultConfig(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
-	if cfg.FlushInterval != 5*time.Minute {
-		t.Errorf("FlushInterval = %v, want 5m", cfg.FlushInterval)
-	}
-	if cfg.MaxRows != 100000 {
-		t.Errorf("MaxRows = %d, want 100000", cfg.MaxRows)
-	}
-	if cfg.MaxBytes != 128000000 {
-		t.Errorf("MaxBytes = %d, want 128000000", cfg.MaxBytes)
-	}
-	if cfg.Compression != compressionZstd {
-		t.Errorf("Compression = %q, want zstd", cfg.Compression)
-	}
+	assert.Equal(t, 5*time.Minute, cfg.FlushInterval)
+	assert.Equal(t, int64(100000), cfg.MaxRows)
+	assert.Equal(t, int64(128000000), cfg.MaxBytes)
+	assert.Equal(t, compressionZstd, cfg.Compression)
 }
 
 func TestValidate(t *testing.T) {
@@ -110,8 +108,10 @@ func TestValidate(t *testing.T) {
 			cfg := createDefaultConfig().(*Config)
 			tt.mutate(cfg)
 			err := cfg.Validate()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -232,6 +232,7 @@ package parquetexporter
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -243,31 +244,13 @@ func TestAttributesToJSON(t *testing.T) {
 
 	got := attributesToJSON(m)
 	// Map ordering is non-deterministic; assert all fragments are present.
-	for _, want := range []string{`"http.method":"GET"`, `"retries":3`, `"ok":true`} {
-		if !contains(got, want) {
-			t.Errorf("attributesToJSON() = %s, missing %s", got, want)
-		}
-	}
+	assert.Contains(t, got, `"http.method":"GET"`)
+	assert.Contains(t, got, `"retries":3`)
+	assert.Contains(t, got, `"ok":true`)
 }
 
 func TestAttributesToJSONEmpty(t *testing.T) {
-	if got := attributesToJSON(pcommon.NewMap()); got != "{}" {
-		t.Errorf("attributesToJSON(empty) = %q, want {}", got)
-	}
-}
-
-func contains(haystack, needle string) bool {
-	return len(haystack) >= len(needle) &&
-		(haystack == needle || indexOf(haystack, needle) >= 0)
-}
-
-func indexOf(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return i
-		}
-	}
-	return -1
+	assert.Equal(t, "{}", attributesToJSON(pcommon.NewMap()))
 }
 ```
 
@@ -318,21 +301,223 @@ git commit -m "feat(parquetexporter): add attribute JSON serialization"
 
 ---
 
-### Task 3: Parquet writer core (rotation + atomic rename)
+### Task 3: Telemetry instruments
+
+**Files:**
+- Create: `exporter/parquetexporter/telemetry.go`
+- Create: `exporter/parquetexporter/telemetry_test.go`
+
+**Interfaces:**
+- Produces:
+  - `const scopeName = "go.olly.garden/grafts/exporter/parquetexporter"`
+  - rotation-reason consts `reasonRows, reasonBytes, reasonAge, reasonShutdown` and operation consts `opCreate, opWrite, opSync, opRename` (string values).
+  - `type telemetry struct { ... }` holding the five instruments.
+  - `func newTelemetry(set component.TelemetrySettings) (*telemetry, error)`.
+  - `func (t *telemetry) recordRotation(ctx context.Context, table, reason string, rows, bytes int64, seconds float64)`.
+  - `func (t *telemetry) recordError(ctx context.Context, table, op string, err error)`.
+  - `func classifyError(err error) string` → bounded `disk_full|permission|io`.
+
+**Rationale:** `exporterhelper` already emits generic `otelcol_exporter_sent_*` / `otelcol_exporter_send_failed_*`. These instruments add what those cannot: which file table, why a file rotated, and at which I/O stage (and error class) a failure occurred. No spans — the export span from `exporterhelper` already owns the push boundary, and age-triggered rotations have no trace context.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `telemetry_test.go`:
+
+```go
+package parquetexporter
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component/componenttest"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+)
+
+func TestRecordRotationEmitsFilesRotated(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	ts := componenttest.NewNopTelemetrySettings()
+	ts.MeterProvider = mp
+
+	tel, err := newTelemetry(ts)
+	require.NoError(t, err)
+
+	tel.recordRotation(context.Background(), "traces", reasonRows, 10, 2048, 0.25)
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+
+	found := false
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name == "parquetexporter.files.rotated" {
+				found = true
+				sum := m.Data.(metricdata.Sum[int64])
+				require.Len(t, sum.DataPoints, 1)
+				assert.Equal(t, int64(1), sum.DataPoints[0].Value)
+			}
+		}
+	}
+	assert.True(t, found, "parquetexporter.files.rotated not emitted")
+}
+
+func TestClassifyError(t *testing.T) {
+	assert.Equal(t, "io", classifyError(assert.AnError))
+}
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd exporter/parquetexporter && go test ./... -run "TestRecordRotation|TestClassifyError" 2>&1 | head`
+Expected: FAIL — `undefined: newTelemetry`.
+
+- [ ] **Step 3: Write `telemetry.go`**
+
+```go
+package parquetexporter
+
+import (
+	"context"
+	"errors"
+	"io/fs"
+	"syscall"
+
+	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+)
+
+const scopeName = "go.olly.garden/grafts/exporter/parquetexporter"
+
+const (
+	reasonRows     = "rows"
+	reasonBytes    = "bytes"
+	reasonAge      = "age"
+	reasonShutdown = "shutdown"
+)
+
+const (
+	opCreate = "create"
+	opWrite  = "write"
+	opSync   = "sync"
+	opRename = "rename"
+)
+
+type telemetry struct {
+	filesRotated metric.Int64Counter
+	rowsWritten  metric.Int64Counter
+	bytesWritten metric.Int64Counter
+	rotationDur  metric.Float64Histogram
+	errors       metric.Int64Counter
+}
+
+func newTelemetry(set component.TelemetrySettings) (*telemetry, error) {
+	m := set.MeterProvider.Meter(scopeName)
+	t := &telemetry{}
+	var errs error
+	var err error
+
+	if t.filesRotated, err = m.Int64Counter("parquetexporter.files.rotated",
+		metric.WithUnit("{file}"),
+		metric.WithDescription("Parquet files closed and atomically renamed into place.")); err != nil {
+		errs = errors.Join(errs, err)
+	}
+	if t.rowsWritten, err = m.Int64Counter("parquetexporter.rows.written",
+		metric.WithUnit("{row}"),
+		metric.WithDescription("Rows committed to Parquet files (counted at rotation).")); err != nil {
+		errs = errors.Join(errs, err)
+	}
+	if t.bytesWritten, err = m.Int64Counter("parquetexporter.bytes.written",
+		metric.WithUnit("By"),
+		metric.WithDescription("Bytes committed to Parquet files (counted at rotation).")); err != nil {
+		errs = errors.Join(errs, err)
+	}
+	if t.rotationDur, err = m.Float64Histogram("parquetexporter.rotation.duration",
+		metric.WithUnit("s"),
+		metric.WithDescription("Duration of a successful file rotation (close, fsync, rename).")); err != nil {
+		errs = errors.Join(errs, err)
+	}
+	if t.errors, err = m.Int64Counter("parquetexporter.errors",
+		metric.WithUnit("{error}"),
+		metric.WithDescription("File I/O errors by operation and error class.")); err != nil {
+		errs = errors.Join(errs, err)
+	}
+	return t, errs
+}
+
+func (t *telemetry) recordRotation(ctx context.Context, table, reason string, rows, bytes int64, seconds float64) {
+	tableAttr := metric.WithAttributes(attribute.String("parquet.table", table))
+	t.filesRotated.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("parquet.table", table),
+		attribute.String("parquet.rotation.reason", reason),
+	))
+	t.rowsWritten.Add(ctx, rows, tableAttr)
+	t.bytesWritten.Add(ctx, bytes, tableAttr)
+	t.rotationDur.Record(ctx, seconds, tableAttr)
+}
+
+func (t *telemetry) recordError(ctx context.Context, table, op string, err error) {
+	t.errors.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("parquet.table", table),
+		attribute.String("parquet.operation", op),
+		attribute.String("error.type", classifyError(err)),
+	))
+}
+
+// classifyError maps an I/O error to a bounded error.type value so the errors
+// counter stays low-cardinality.
+func classifyError(err error) string {
+	switch {
+	case errors.Is(err, syscall.ENOSPC):
+		return "disk_full"
+	case errors.Is(err, fs.ErrPermission):
+		return "permission"
+	default:
+		return "io"
+	}
+}
+```
+
+- [ ] **Step 4: Add the SDK metric test dependency and run tests**
+
+Run:
+```bash
+cd exporter/parquetexporter
+go get go.opentelemetry.io/otel/sdk/metric@latest
+go test ./... -run "TestRecordRotation|TestClassifyError" -v 2>&1 | tail
+```
+Expected: PASS. (`go.opentelemetry.io/otel/metric` and `.../attribute` come transitively with the collector; align versions via `go mod tidy` if needed.)
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd ../.. && make fmt
+git add exporter/parquetexporter/telemetry.go exporter/parquetexporter/telemetry_test.go go.mod go.sum
+git commit -m "feat(parquetexporter): add telemetry instruments"
+```
+
+---
+
+### Task 4: Parquet writer core (rotation + atomic rename)
 
 **Files:**
 - Create: `exporter/parquetexporter/writer.go`
 - Create: `exporter/parquetexporter/writer_test.go`
 
 **Interfaces:**
-- Consumes: `Config` (for thresholds + compression).
+- Consumes: `Config` (thresholds + compression), `*telemetry` and the `reason*`/`op*` consts (Task 3).
 - Produces:
   - `func newWriterProperties(compression string) *parquet.WriterProperties`
-  - `type signalWriter struct { ... }`
-  - `func newSignalWriter(dir string, schema *arrow.Schema, cfg *Config, logger *zap.Logger) (*signalWriter, error)` — creates `dir` (MkdirAll).
-  - `func (w *signalWriter) write(rec arrow.Record) error` — appends one row group, rotates if thresholds exceeded. Thread-safe.
-  - `func (w *signalWriter) maybeRotateForAge() error` — rotates only if an open file has reached `FlushInterval` age. Thread-safe.
-  - `func (w *signalWriter) close() error` — finalizes any open file (rename to `.parquet`). Thread-safe.
+  - `type signalWriter struct { ... }` — carries `table string` and `tel *telemetry` so all metrics are tagged with this writer's `parquet.table`.
+  - `func newSignalWriter(table, dir string, schema *arrow.Schema, cfg *Config, tel *telemetry, logger *zap.Logger) (*signalWriter, error)` — creates `dir` (MkdirAll).
+  - `func (w *signalWriter) write(rec arrow.Record) error` — appends one row group, rotates if thresholds exceeded (reason `rows` or `bytes`). Thread-safe.
+  - `func (w *signalWriter) maybeRotateForAge() error` — rotates (reason `age`) only if an open file has reached `FlushInterval` age. Thread-safe.
+  - `func (w *signalWriter) close() error` — finalizes any open file (reason `shutdown`, rename to `.parquet`). Thread-safe.
+  - Recording happens inside the writer using `context.Background()` (component metrics need no request context); failures are also logged at Error via the zap logger with the file path.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -351,6 +536,9 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/parquet/file"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component/componenttest"
 	"go.uber.org/zap"
 )
 
@@ -358,6 +546,13 @@ func testSchema() *arrow.Schema {
 	return arrow.NewSchema([]arrow.Field{
 		{Name: "v", Type: arrow.BinaryTypes.String},
 	}, nil)
+}
+
+func testTelemetry(t *testing.T) *telemetry {
+	t.Helper()
+	tel, err := newTelemetry(componenttest.NewNopTelemetrySettings())
+	require.NoError(t, err)
+	return tel
 }
 
 func oneRowRecord(t *testing.T, schema *arrow.Schema, val string) arrow.Record {
@@ -382,27 +577,19 @@ func TestWriterRotatesOnMaxRows(t *testing.T) {
 	cfg.MaxBytes = 1 << 30
 	cfg.FlushInterval = time.Hour
 
-	w, err := newSignalWriter(dir, testSchema(), cfg, zap.NewNop())
-	if err != nil {
-		t.Fatal(err)
-	}
+	w, err := newSignalWriter("test", dir, testSchema(), cfg, testTelemetry(t), zap.NewNop())
+	require.NoError(t, err)
 	for i := 0; i < 5; i++ {
 		rec := oneRowRecord(t, testSchema(), "x")
-		if err := w.write(rec); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, w.write(rec))
 		rec.Release()
 	}
-	if err := w.close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, w.close())
+
 	// 5 rows, rotate every 2 -> files of 2,2,1 = 3 files. No .part remains.
-	if got := countParquet(t, dir); got != 3 {
-		t.Errorf("parquet files = %d, want 3", got)
-	}
-	if parts, _ := filepath.Glob(filepath.Join(dir, "*.part")); len(parts) != 0 {
-		t.Errorf("found leftover .part files: %v", parts)
-	}
+	assert.Equal(t, 3, countParquet(t, dir))
+	parts, _ := filepath.Glob(filepath.Join(dir, "*.part"))
+	assert.Empty(t, parts, "no leftover .part files")
 }
 
 func TestWriterRoundTrip(t *testing.T) {
@@ -410,36 +597,22 @@ func TestWriterRoundTrip(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
 	cfg.Directory = dir
 
-	w, err := newSignalWriter(dir, testSchema(), cfg, zap.NewNop())
-	if err != nil {
-		t.Fatal(err)
-	}
+	w, err := newSignalWriter("test", dir, testSchema(), cfg, testTelemetry(t), zap.NewNop())
+	require.NoError(t, err)
 	rec := oneRowRecord(t, testSchema(), "hello")
-	if err := w.write(rec); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, w.write(rec))
 	rec.Release()
-	if err := w.close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, w.close())
 
 	matches, _ := filepath.Glob(filepath.Join(dir, "*.parquet"))
-	if len(matches) != 1 {
-		t.Fatalf("want 1 parquet file, got %d", len(matches))
-	}
+	require.Len(t, matches, 1)
 	f, err := os.Open(matches[0])
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer f.Close()
 	rdr, err := file.NewParquetReader(f)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer rdr.Close()
-	if rdr.NumRows() != 1 {
-		t.Errorf("rows in file = %d, want 1", rdr.NumRows())
-	}
+	assert.Equal(t, int64(1), rdr.NumRows())
 }
 
 func TestWriterRotatesOnAge(t *testing.T) {
@@ -448,22 +621,14 @@ func TestWriterRotatesOnAge(t *testing.T) {
 	cfg.Directory = dir
 	cfg.FlushInterval = time.Millisecond
 
-	w, err := newSignalWriter(dir, testSchema(), cfg, zap.NewNop())
-	if err != nil {
-		t.Fatal(err)
-	}
+	w, err := newSignalWriter("test", dir, testSchema(), cfg, testTelemetry(t), zap.NewNop())
+	require.NoError(t, err)
 	rec := oneRowRecord(t, testSchema(), "x")
-	if err := w.write(rec); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, w.write(rec))
 	rec.Release()
 	time.Sleep(5 * time.Millisecond)
-	if err := w.maybeRotateForAge(); err != nil {
-		t.Fatal(err)
-	}
-	if got := countParquet(t, dir); got != 1 {
-		t.Errorf("parquet files after age rotation = %d, want 1", got)
-	}
+	require.NoError(t, w.maybeRotateForAge())
+	assert.Equal(t, 1, countParquet(t, dir))
 }
 ```
 
@@ -478,6 +643,7 @@ Expected: FAIL — `undefined: newSignalWriter`.
 package parquetexporter
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -506,12 +672,15 @@ func newWriterProperties(compression string) *parquet.WriterProperties {
 }
 
 // signalWriter owns a single open Parquet file for one signal table and
-// rotates it based on row count, byte size, or age.
+// rotates it based on row count, byte size, or age. All telemetry it records
+// is tagged with its table name.
 type signalWriter struct {
+	table  string
 	dir    string
 	schema *arrow.Schema
 	cfg    *Config
 	props  *parquet.WriterProperties
+	tel    *telemetry
 	logger *zap.Logger
 
 	mu       sync.Mutex
@@ -522,15 +691,17 @@ type signalWriter struct {
 	openedAt time.Time
 }
 
-func newSignalWriter(dir string, schema *arrow.Schema, cfg *Config, logger *zap.Logger) (*signalWriter, error) {
+func newSignalWriter(table, dir string, schema *arrow.Schema, cfg *Config, tel *telemetry, logger *zap.Logger) (*signalWriter, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create dir %s: %w", dir, err)
 	}
 	return &signalWriter{
+		table:  table,
 		dir:    dir,
 		schema: schema,
 		cfg:    cfg,
 		props:  newWriterProperties(cfg.Compression),
+		tel:    tel,
 		logger: logger,
 	}, nil
 }
@@ -540,6 +711,8 @@ func (w *signalWriter) openLocked() error {
 	w.partPath = filepath.Join(w.dir, name+".part")
 	f, err := os.Create(w.partPath)
 	if err != nil {
+		w.tel.recordError(context.Background(), w.table, opCreate, err)
+		w.logger.Error("parquet: create file failed", zap.String("path", w.partPath), zap.Error(err))
 		return fmt.Errorf("create %s: %w", w.partPath, err)
 	}
 	fw, err := pqarrow.NewFileWriter(w.schema, f, w.props, pqarrow.DefaultWriterProps())
@@ -554,31 +727,51 @@ func (w *signalWriter) openLocked() error {
 	return nil
 }
 
-// rotateLocked closes the open writer and atomically renames .part -> .parquet.
-func (w *signalWriter) rotateLocked() error {
+// rotateLocked closes the open writer and atomically renames .part -> .parquet,
+// recording the outcome under the given reason.
+func (w *signalWriter) rotateLocked(reason string) error {
 	if w.fw == nil {
 		return nil
 	}
+	ctx := context.Background()
+	start := time.Now()
+	rows := w.rows
+	partPath := w.partPath
+
 	if err := w.fw.Close(); err != nil {
 		_ = w.file.Close()
 		w.reset()
+		w.tel.recordError(ctx, w.table, opWrite, err)
+		w.logger.Error("parquet: close writer failed", zap.String("path", partPath), zap.Error(err))
 		return fmt.Errorf("close parquet writer: %w", err)
 	}
 	if err := w.file.Sync(); err != nil {
 		_ = w.file.Close()
 		w.reset()
+		w.tel.recordError(ctx, w.table, opSync, err)
+		w.logger.Error("parquet: fsync failed", zap.String("path", partPath), zap.Error(err))
 		return fmt.Errorf("sync: %w", err)
+	}
+	var size int64
+	if info, serr := w.file.Stat(); serr == nil {
+		size = info.Size()
 	}
 	if err := w.file.Close(); err != nil {
 		w.reset()
+		w.tel.recordError(ctx, w.table, opWrite, err)
+		w.logger.Error("parquet: close file failed", zap.String("path", partPath), zap.Error(err))
 		return fmt.Errorf("close file: %w", err)
 	}
-	final := w.partPath[:len(w.partPath)-len(".part")]
-	if err := os.Rename(w.partPath, final); err != nil {
+	final := partPath[:len(partPath)-len(".part")]
+	if err := os.Rename(partPath, final); err != nil {
 		w.reset()
-		return fmt.Errorf("rename %s: %w", w.partPath, err)
+		w.tel.recordError(ctx, w.table, opRename, err)
+		// The .part file is left behind on a failed rename — name it explicitly.
+		w.logger.Error("parquet: rename failed, orphan .part left", zap.String("path", partPath), zap.Error(err))
+		return fmt.Errorf("rename %s: %w", partPath, err)
 	}
 	w.reset()
+	w.tel.recordRotation(ctx, w.table, reason, rows, size, time.Since(start).Seconds())
 	return nil
 }
 
@@ -598,6 +791,8 @@ func (w *signalWriter) write(rec arrow.Record) error {
 		}
 	}
 	if err := w.fw.Write(rec); err != nil {
+		w.tel.recordError(context.Background(), w.table, opWrite, err)
+		w.logger.Error("parquet: write record failed", zap.String("path", w.partPath), zap.Error(err))
 		return fmt.Errorf("write record: %w", err)
 	}
 	w.rows += rec.NumRows()
@@ -606,8 +801,11 @@ func (w *signalWriter) write(rec arrow.Record) error {
 	if info, err := w.file.Stat(); err == nil {
 		size = info.Size()
 	}
-	if w.rows >= w.cfg.MaxRows || size >= w.cfg.MaxBytes {
-		return w.rotateLocked()
+	if w.rows >= w.cfg.MaxRows {
+		return w.rotateLocked(reasonRows)
+	}
+	if size >= w.cfg.MaxBytes {
+		return w.rotateLocked(reasonBytes)
 	}
 	return nil
 }
@@ -619,7 +817,7 @@ func (w *signalWriter) maybeRotateForAge() error {
 		return nil
 	}
 	if time.Since(w.openedAt) >= w.cfg.FlushInterval {
-		return w.rotateLocked()
+		return w.rotateLocked(reasonAge)
 	}
 	return nil
 }
@@ -627,7 +825,7 @@ func (w *signalWriter) maybeRotateForAge() error {
 func (w *signalWriter) close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.rotateLocked()
+	return w.rotateLocked(reasonShutdown)
 }
 ```
 
@@ -652,7 +850,7 @@ git commit -m "feat(parquetexporter): add rotating parquet writer with atomic re
 
 ---
 
-### Task 4: Schemas
+### Task 5: Schemas
 
 **Files:**
 - Create: `exporter/parquetexporter/schema.go`
@@ -672,47 +870,28 @@ Create `schema_test.go`:
 ```go
 package parquetexporter
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/stretchr/testify/assert"
+)
 
 func TestSchemasHaveExpectedColumns(t *testing.T) {
-	cases := []struct {
-		name   string
-		schema func() (cols int, has func(string) bool)
-	}{}
-	_ = cases
+	hasField := func(t *testing.T, schema *arrow.Schema, name string) {
+		t.Helper()
+		_, ok := schema.FieldsByName(name)
+		assert.True(t, ok, "schema missing field %q", name)
+	}
 
-	// Spot-check a representative column on each schema.
-	checks := []struct {
-		name   string
-		schema interface{ NumFields() int }
-		col    string
-	}{}
-	_ = checks
-
-	if tracesSchema().NumFields() == 0 {
-		t.Error("traces schema empty")
-	}
-	if _, ok := tracesSchema().FieldsByName("SpanAttributes"); !ok {
-		t.Error("traces schema missing SpanAttributes")
-	}
-	if _, ok := logsSchema().FieldsByName("Body"); !ok {
-		t.Error("logs schema missing Body")
-	}
-	if _, ok := metricsGaugeSchema().FieldsByName("Value"); !ok {
-		t.Error("gauge schema missing Value")
-	}
-	if _, ok := metricsSumSchema().FieldsByName("IsMonotonic"); !ok {
-		t.Error("sum schema missing IsMonotonic")
-	}
-	if _, ok := metricsHistogramSchema().FieldsByName("BucketCounts"); !ok {
-		t.Error("histogram schema missing BucketCounts")
-	}
-	if _, ok := metricsExpHistogramSchema().FieldsByName("PositiveBucketCounts"); !ok {
-		t.Error("exp histogram schema missing PositiveBucketCounts")
-	}
-	if _, ok := metricsSummarySchema().FieldsByName("ValueAtQuantiles"); !ok {
-		t.Error("summary schema missing ValueAtQuantiles")
-	}
+	assert.NotZero(t, tracesSchema().NumFields(), "traces schema empty")
+	hasField(t, tracesSchema(), "SpanAttributes")
+	hasField(t, logsSchema(), "Body")
+	hasField(t, metricsGaugeSchema(), "Value")
+	hasField(t, metricsSumSchema(), "IsMonotonic")
+	hasField(t, metricsHistogramSchema(), "BucketCounts")
+	hasField(t, metricsExpHistogramSchema(), "PositiveBucketCounts")
+	hasField(t, metricsSummarySchema(), "ValueAtQuantiles")
 }
 ```
 
@@ -838,7 +1017,7 @@ git commit -m "feat(parquetexporter): add arrow schemas for all signal tables"
 
 ---
 
-### Task 5: Traces transform
+### Task 6: Traces transform
 
 **Files:**
 - Create: `exporter/parquetexporter/traces.go`
@@ -859,6 +1038,8 @@ import (
 	"testing"
 
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
@@ -876,28 +1057,17 @@ func TestTracesToRecord(t *testing.T) {
 	rec := tracesToRecord(td)
 	defer rec.Release()
 
-	if rec.NumRows() != 1 {
-		t.Fatalf("rows = %d, want 1", rec.NumRows())
-	}
-	col, _ := rec.Schema().FieldsByName("ServiceName")
-	_ = col
-	idx := rec.Schema().FieldIndices("ServiceName")[0]
-	svc := rec.Column(idx).(*array.String).Value(0)
-	if svc != "checkout" {
-		t.Errorf("ServiceName = %q, want checkout", svc)
-	}
+	require.Equal(t, int64(1), rec.NumRows())
+	svcIdx := rec.Schema().FieldIndices("ServiceName")[0]
+	assert.Equal(t, "checkout", rec.Column(svcIdx).(*array.String).Value(0))
 	nameIdx := rec.Schema().FieldIndices("SpanName")[0]
-	if got := rec.Column(nameIdx).(*array.String).Value(0); got != "GET /cart" {
-		t.Errorf("SpanName = %q, want GET /cart", got)
-	}
+	assert.Equal(t, "GET /cart", rec.Column(nameIdx).(*array.String).Value(0))
 }
 
 func TestTracesToRecordEmpty(t *testing.T) {
 	rec := tracesToRecord(ptrace.NewTraces())
 	defer rec.Release()
-	if rec.NumRows() != 0 {
-		t.Errorf("rows = %d, want 0", rec.NumRows())
-	}
+	assert.Equal(t, int64(0), rec.NumRows())
 }
 ```
 
@@ -1016,7 +1186,7 @@ git commit -m "feat(parquetexporter): add traces-to-arrow transform"
 
 ---
 
-### Task 6: Logs transform
+### Task 7: Logs transform
 
 **Files:**
 - Create: `exporter/parquetexporter/logs.go`
@@ -1037,6 +1207,8 @@ import (
 	"testing"
 
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
@@ -1051,21 +1223,15 @@ func TestLogsToRecord(t *testing.T) {
 
 	rec := logsToRecord(ld)
 	defer rec.Release()
-	if rec.NumRows() != 1 {
-		t.Fatalf("rows = %d, want 1", rec.NumRows())
-	}
+	require.Equal(t, int64(1), rec.NumRows())
 	bodyIdx := rec.Schema().FieldIndices("Body")[0]
-	if got := rec.Column(bodyIdx).(*array.String).Value(0); got != "boom" {
-		t.Errorf("Body = %q, want boom", got)
-	}
+	assert.Equal(t, "boom", rec.Column(bodyIdx).(*array.String).Value(0))
 }
 
 func TestLogsToRecordEmpty(t *testing.T) {
 	rec := logsToRecord(plog.NewLogs())
 	defer rec.Release()
-	if rec.NumRows() != 0 {
-		t.Errorf("rows = %d, want 0", rec.NumRows())
-	}
+	assert.Equal(t, int64(0), rec.NumRows())
 }
 ```
 
@@ -1145,7 +1311,7 @@ git commit -m "feat(parquetexporter): add logs-to-arrow transform"
 
 ---
 
-### Task 7: Metrics transform
+### Task 8: Metrics transform
 
 **Files:**
 - Create: `exporter/parquetexporter/metrics.go`
@@ -1168,6 +1334,8 @@ import (
 	"testing"
 
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
@@ -1197,26 +1365,18 @@ func TestMetricsToRecordsGaugeAndSum(t *testing.T) {
 	}()
 
 	gr, ok := recs[kindGauge]
-	if !ok || gr.NumRows() != 1 {
-		t.Fatalf("gauge record missing or wrong rows: ok=%v", ok)
-	}
+	require.True(t, ok, "gauge record present")
+	require.Equal(t, int64(1), gr.NumRows())
 	vIdx := gr.Schema().FieldIndices("Value")[0]
-	if got := gr.Column(vIdx).(*array.Float64).Value(0); got != 42.0 {
-		t.Errorf("gauge Value = %v, want 42", got)
-	}
+	assert.Equal(t, 42.0, gr.Column(vIdx).(*array.Float64).Value(0))
 
 	sr, ok := recs[kindSum]
-	if !ok || sr.NumRows() != 1 {
-		t.Fatalf("sum record missing or wrong rows")
-	}
+	require.True(t, ok, "sum record present")
+	require.Equal(t, int64(1), sr.NumRows())
 	mIdx := sr.Schema().FieldIndices("IsMonotonic")[0]
-	if got := sr.Column(mIdx).(*array.Boolean).Value(0); !got {
-		t.Errorf("sum IsMonotonic = %v, want true", got)
-	}
+	assert.True(t, sr.Column(mIdx).(*array.Boolean).Value(0), "sum IsMonotonic")
 
-	if _, ok := recs[kindHistogram]; ok {
-		t.Error("histogram record should be absent")
-	}
+	assert.NotContains(t, recs, kindHistogram, "histogram record should be absent")
 }
 ```
 
@@ -1486,7 +1646,7 @@ git commit -m "feat(parquetexporter): add metrics-to-arrow transform (5 tables)"
 
 ---
 
-### Task 8: Exporter lifecycle and factory
+### Task 9: Exporter lifecycle and factory
 
 **Files:**
 - Create: `exporter/parquetexporter/exporter.go`
@@ -1495,12 +1655,12 @@ git commit -m "feat(parquetexporter): add metrics-to-arrow transform (5 tables)"
 - Create: `exporter/parquetexporter/factory_test.go`
 
 **Interfaces:**
-- Consumes: writers, transforms, `Config`.
+- Consumes: writers, transforms, `Config`, `newTelemetry` (Task 3).
 - Produces:
-  - `func newParquetExporter(cfg *Config, set exporter.Settings) *parquetExporter`
+  - `func newParquetExporter(cfg *Config, set exporter.Settings) (*parquetExporter, error)` — builds the telemetry from `set.TelemetrySettings` (returns its error).
   - methods `Start(ctx, host) error`, `Shutdown(ctx) error`, `pushTraces(ctx, ptrace.Traces) error`, `pushMetrics(ctx, pmetric.Metrics) error`, `pushLogs(ctx, plog.Logs) error`.
   - `func NewFactory() exporter.Factory`.
-- Behavior: `Start` creates the seven writers (subdirs `traces`, `logs`, `metrics_gauge`, `metrics_sum`, `metrics_histogram`, `metrics_exponential_histogram`, `metrics_summary`) and launches a background ticker (`FlushInterval`) that calls `maybeRotateForAge()` on every writer. `Shutdown` stops the ticker and closes every writer. Push methods build the record(s), `write` them, and release.
+- Behavior: `Start` creates the seven writers (subdirs `traces`, `logs`, `metrics_gauge`, `metrics_sum`, `metrics_histogram`, `metrics_exponential_histogram`, `metrics_summary`), passing each its table name and the shared `*telemetry`, then launches a background ticker (`FlushInterval`) that calls `maybeRotateForAge()` on every writer. `Shutdown` stops the ticker and closes every writer. Push methods build the record(s), `write` them, and release.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1514,6 +1674,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/exporter/exportertest"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -1524,26 +1686,19 @@ func TestExporterWritesTraces(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
 	cfg.Directory = dir
 
-	exp := newParquetExporter(cfg, exportertest.NewNopSettings(exportertest.NopType))
-	if err := exp.Start(context.Background(), componenttest.NewNopHost()); err != nil {
-		t.Fatal(err)
-	}
+	exp, err := newParquetExporter(cfg, exportertest.NewNopSettings(exportertest.NopType))
+	require.NoError(t, err)
+	require.NoError(t, exp.Start(context.Background(), componenttest.NewNopHost()))
 
 	td := ptrace.NewTraces()
 	span := td.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans().AppendEmpty()
 	span.SetName("op")
 
-	if err := exp.pushTraces(context.Background(), td); err != nil {
-		t.Fatal(err)
-	}
-	if err := exp.Shutdown(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, exp.pushTraces(context.Background(), td))
+	require.NoError(t, exp.Shutdown(context.Background()))
 
 	matches, _ := filepath.Glob(filepath.Join(dir, "traces", "*.parquet"))
-	if len(matches) != 1 {
-		t.Errorf("traces parquet files = %d, want 1", len(matches))
-	}
+	assert.Len(t, matches, 1)
 }
 ```
 
@@ -1577,6 +1732,7 @@ import (
 type parquetExporter struct {
 	cfg    *Config
 	logger *zap.Logger
+	tel    *telemetry
 
 	traces  *signalWriter
 	logs    *signalWriter
@@ -1587,8 +1743,12 @@ type parquetExporter struct {
 	wg     sync.WaitGroup
 }
 
-func newParquetExporter(cfg *Config, set exporter.Settings) *parquetExporter {
-	return &parquetExporter{cfg: cfg, logger: set.Logger, done: make(chan struct{})}
+func newParquetExporter(cfg *Config, set exporter.Settings) (*parquetExporter, error) {
+	tel, err := newTelemetry(set.TelemetrySettings)
+	if err != nil {
+		return nil, err
+	}
+	return &parquetExporter{cfg: cfg, logger: set.Logger, tel: tel, done: make(chan struct{})}, nil
 }
 
 var metricSubdir = map[metricKind]string{
@@ -1616,15 +1776,16 @@ func metricSchemaByKind(kind metricKind) *arrow.Schema {
 
 func (e *parquetExporter) Start(_ context.Context, _ component.Host) error {
 	var err error
-	if e.traces, err = newSignalWriter(filepath.Join(e.cfg.Directory, "traces"), tracesSchema(), e.cfg, e.logger); err != nil {
+	if e.traces, err = newSignalWriter("traces", filepath.Join(e.cfg.Directory, "traces"), tracesSchema(), e.cfg, e.tel, e.logger); err != nil {
 		return err
 	}
-	if e.logs, err = newSignalWriter(filepath.Join(e.cfg.Directory, "logs"), logsSchema(), e.cfg, e.logger); err != nil {
+	if e.logs, err = newSignalWriter("logs", filepath.Join(e.cfg.Directory, "logs"), logsSchema(), e.cfg, e.tel, e.logger); err != nil {
 		return err
 	}
 	e.metrics = map[metricKind]*signalWriter{}
 	for kind, sub := range metricSubdir {
-		w, werr := newSignalWriter(filepath.Join(e.cfg.Directory, sub), metricSchemaByKind(kind), e.cfg, e.logger)
+		// sub is both the subdirectory and the parquet.table attribute value.
+		w, werr := newSignalWriter(sub, filepath.Join(e.cfg.Directory, sub), metricSchemaByKind(kind), e.cfg, e.tel, e.logger)
 		if werr != nil {
 			return werr
 		}
@@ -1741,7 +1902,10 @@ func NewFactory() exporter.Factory {
 }
 
 func createTracesExporter(ctx context.Context, set exporter.Settings, cfg component.Config) (exporter.Traces, error) {
-	exp := newParquetExporter(cfg.(*Config), set)
+	exp, err := newParquetExporter(cfg.(*Config), set)
+	if err != nil {
+		return nil, err
+	}
 	return exporterhelper.NewTraces(ctx, set, cfg, exp.pushTraces,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		exporterhelper.WithStart(exp.Start),
@@ -1750,7 +1914,10 @@ func createTracesExporter(ctx context.Context, set exporter.Settings, cfg compon
 }
 
 func createMetricsExporter(ctx context.Context, set exporter.Settings, cfg component.Config) (exporter.Metrics, error) {
-	exp := newParquetExporter(cfg.(*Config), set)
+	exp, err := newParquetExporter(cfg.(*Config), set)
+	if err != nil {
+		return nil, err
+	}
 	return exporterhelper.NewMetrics(ctx, set, cfg, exp.pushMetrics,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		exporterhelper.WithStart(exp.Start),
@@ -1759,7 +1926,10 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings, cfg compo
 }
 
 func createLogsExporter(ctx context.Context, set exporter.Settings, cfg component.Config) (exporter.Logs, error) {
-	exp := newParquetExporter(cfg.(*Config), set)
+	exp, err := newParquetExporter(cfg.(*Config), set)
+	if err != nil {
+		return nil, err
+	}
 	return exporterhelper.NewLogs(ctx, set, cfg, exp.pushLogs,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		exporterhelper.WithStart(exp.Start),
@@ -1779,6 +1949,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/exporter/exportertest"
 )
 
@@ -1788,15 +1959,12 @@ func TestFactoryCreatesAllSignals(t *testing.T) {
 	cfg.Directory = t.TempDir()
 	set := exportertest.NewNopSettings(exportertest.NopType)
 
-	if _, err := f.CreateTraces(context.Background(), set, cfg); err != nil {
-		t.Errorf("CreateTraces: %v", err)
-	}
-	if _, err := f.CreateMetrics(context.Background(), set, cfg); err != nil {
-		t.Errorf("CreateMetrics: %v", err)
-	}
-	if _, err := f.CreateLogs(context.Background(), set, cfg); err != nil {
-		t.Errorf("CreateLogs: %v", err)
-	}
+	_, err := f.CreateTraces(context.Background(), set, cfg)
+	assert.NoError(t, err)
+	_, err = f.CreateMetrics(context.Background(), set, cfg)
+	assert.NoError(t, err)
+	_, err = f.CreateLogs(context.Background(), set, cfg)
+	assert.NoError(t, err)
 }
 ```
 
@@ -1817,7 +1985,7 @@ git commit -m "feat(parquetexporter): add exporter lifecycle and factory"
 
 ---
 
-### Task 9: Wiring, README, and ai-context
+### Task 10: Wiring, README, and ai-context
 
 **Files:**
 - Modify: `Makefile`
@@ -1901,6 +2069,22 @@ FROM read_parquet('/var/lib/otel/parquet/traces/*.parquet')
 GROUP BY 1;
 ```
 
+## Observability
+
+The exporter emits its own metrics (scope `go.olly.garden/grafts/exporter/parquetexporter`)
+in addition to the collector's standard `otelcol_exporter_*` counters:
+
+| Metric | Description | Attributes |
+|--------|-------------|------------|
+| `parquetexporter.files.rotated` | Files closed and renamed into place | `parquet.table`, `parquet.rotation.reason` (`rows`/`bytes`/`age`/`shutdown`) |
+| `parquetexporter.rows.written` | Rows committed (at rotation) | `parquet.table` |
+| `parquetexporter.bytes.written` | Bytes committed (at rotation) | `parquet.table` |
+| `parquetexporter.rotation.duration` | Successful rotation latency (close+fsync+rename) | `parquet.table` |
+| `parquetexporter.errors` | File I/O errors | `parquet.table`, `parquet.operation` (`create`/`write`/`sync`/`rename`), `error.type` (`disk_full`/`permission`/`io`) |
+
+I/O failures are also logged at `ERROR` with the offending file path. A failed
+rename leaves an orphan `.part` file — the log names it so it can be cleaned up.
+
 ## Notes
 
 - Timestamps are stored as unix-nanosecond `BIGINT`; convert with
@@ -1921,11 +2105,14 @@ In `CLAUDE.md`, under `### Components`, add a section after the NATS JetStream E
   metric files (gauge/sum/histogram/exponential_histogram/summary)
 - Attribute maps stored as JSON strings; files rotate on time/rows/bytes with
   atomic .part -> .parquet rename
+- Emits own metrics (parquetexporter.*) for rotation, rows/bytes, and I/O
+  errors (by operation + error.type); failures logged with the file path
 
 Key files:
 - `config.go`: Configuration struct with validation
+- `telemetry.go`: Self-telemetry instruments (rotation, errors) + error classification
 - `schema.go`: Arrow schemas for all signal tables
-- `writer.go`: Rotating Parquet writer with atomic rename
+- `writer.go`: Rotating Parquet writer with atomic rename + telemetry recording
 - `traces.go`/`logs.go`/`metrics.go`: OTLP -> Arrow record transforms
 - `exporter.go`: Lifecycle, background flush ticker, push methods
 ```
@@ -1965,7 +2152,8 @@ git commit -m "feat(parquetexporter): wire into build, docs, and ai-context"
 
 ## Self-Review Notes
 
-- **Spec coverage:** target (arrow-go, no CGo) → Tasks 3-7; local FS only → Task 8 Start; flat per-signal dirs → Task 8 `metricSubdir`/subdir names; JSON attributes → Task 2; rotation time+rows+bytes → Task 3; 5 metric files + nested events/links/exemplars → Tasks 4, 7; name `parquet` → Task 8 factory; ClickHouse-shaped schema → Task 4; Makefile/manifest/CLAUDE.md/README → Task 9; tests incl. round-trip → Tasks 3-8.
+- **Spec coverage:** target (arrow-go, no CGo) → Tasks 4-8; local FS only → Task 9 Start; flat per-signal dirs → Task 9 `metricSubdir`/subdir names; JSON attributes → Task 2; rotation time+rows+bytes → Task 4; 5 metric files + nested events/links/exemplars → Tasks 5, 8; name `parquet` → Task 9 factory; ClickHouse-shaped schema → Task 5; Makefile/manifest/CLAUDE.md/README → Task 10; tests incl. round-trip → Tasks 4-9.
+- **Telemetry coverage (user request):** instruments + error classification → Task 3; rotation/rows/bytes/error recording + failure logs at each I/O stage → Task 4 writer; per-table wiring + telemetry construction → Task 9 exporter; documented in README + CLAUDE.md → Task 10. Boundaries/signals chosen per the manual-instrumentation skill: metrics + logs for the rotation I/O boundary, no custom spans (deliberate), no duplication of exporterhelper counters.
 - **Out-of-scope items** (S3, Hive partitioning, live .duckdb, compaction) intentionally have no tasks.
 - **Builder discipline:** every transform must append exactly one value per column per row, or `array.RecordBuilder.NewRecord()` panics with a length mismatch — the per-task tests exercise this.
 - **Version pins** (collector `v1.58.0`, arrow-go `v18.6.0`) are starting points; the implementer should align the collector version with the rest of the repo's `go.mod` and adjust `exportertest`/factory API calls per `go doc` if signatures differ.
