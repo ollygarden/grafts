@@ -11,6 +11,11 @@ import (
 
 const componentType = "parquet"
 
+// NewFactory returns a factory for the parquet exporter.
+// Each signal type (traces, metrics, logs) receives its own independent
+// parquetExporter instance — they are NOT shared. Each instance owns its own
+// set of writers and flush ticker. The package-level seq atomic is used across
+// instances to prevent filename collisions.
 func NewFactory() exporter.Factory {
 	return exporter.NewFactory(
 		component.MustNewType(componentType),

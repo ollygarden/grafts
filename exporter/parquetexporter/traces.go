@@ -59,7 +59,11 @@ func appendSpanRow(rb *array.RecordBuilder, schema *arrow.Schema, s ptrace.Span,
 	str("ScopeName", scopeName)
 	str("ScopeVersion", scopeVer)
 	str("SpanAttributes", attributesToJSON(s.Attributes()))
-	i64("Duration", int64(s.EndTimestamp()-s.StartTimestamp()))
+	var duration int64
+	if s.EndTimestamp() > s.StartTimestamp() {
+		duration = int64(s.EndTimestamp() - s.StartTimestamp())
+	}
+	i64("Duration", duration)
 	str("StatusCode", s.Status().Code().String())
 	str("StatusMessage", s.Status().Message())
 
