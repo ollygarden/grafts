@@ -124,6 +124,12 @@ func metricsToRecords(md pmetric.Metrics) map[metricKind]arrow.Record {
 		kindSummary:      newBuilderSet(metricsSummarySchema()),
 	}
 
+	defer func() {
+		for _, bs := range sets {
+			bs.rb.Release()
+		}
+	}()
+
 	rms := md.ResourceMetrics()
 	for i := 0; i < rms.Len(); i++ {
 		rm := rms.At(i)
@@ -157,7 +163,6 @@ func metricsToRecords(md pmetric.Metrics) map[metricKind]arrow.Record {
 		if bs.rows > 0 {
 			out[kind] = bs.rb.NewRecord()
 		}
-		bs.rb.Release()
 	}
 	return out
 }
