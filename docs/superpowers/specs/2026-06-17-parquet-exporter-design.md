@@ -52,7 +52,7 @@ writers so no data is lost on stop.
 
 ### File layout
 
-```
+```text
 <directory>/
   traces/part-<unixnano>-<seq>.parquet
   logs/part-<unixnano>-<seq>.parquet
