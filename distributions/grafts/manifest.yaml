@@ -35,6 +35,11 @@ exporters:
     import: go.olly.garden/grafts/exporter/natsjetstreamexporter
     path: ../..
 
+  # Parquet exporter (from main module)
+  - gomod: go.olly.garden/grafts v0.1.0
+    import: go.olly.garden/grafts/exporter/parquetexporter
+    path: ../..
+
 extensions:
   # Health and observability
   - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.151.0
