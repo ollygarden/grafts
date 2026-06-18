@@ -1,6 +1,7 @@
 package parquetexporter
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,4 +23,15 @@ func TestAttributesToJSON(t *testing.T) {
 
 func TestAttributesToJSONEmpty(t *testing.T) {
 	assert.Equal(t, "{}", attributesToJSON(pcommon.NewMap()))
+}
+
+func TestAttributesToJSONNonFiniteFloat(t *testing.T) {
+	m := pcommon.NewMap()
+	m.PutDouble("ratio", math.NaN())
+	m.PutStr("ok", "yes")
+
+	got := attributesToJSON(m)
+	assert.NotEqual(t, "{}", got, "should not lose all attributes due to NaN")
+	assert.Contains(t, got, `"ok":"yes"`)
+	assert.Contains(t, got, `"ratio":null`)
 }

@@ -129,7 +129,12 @@ func (w *signalWriter) rotateLocked(reason string) error {
 	if info, serr := w.file.Stat(); serr == nil {
 		size = info.Size()
 	}
-	_ = w.file.Close()
+	if err := w.file.Close(); err != nil {
+		w.reset()
+		w.tel.recordError(ctx, w.table, opWrite, err)
+		w.logger.Error("parquet: close file failed", zap.String("path", partPath), zap.Error(err))
+		return fmt.Errorf("close file: %w", err)
+	}
 	final := partPath[:len(partPath)-len(".part")]
 	if err := os.Rename(partPath, final); err != nil {
 		w.reset()

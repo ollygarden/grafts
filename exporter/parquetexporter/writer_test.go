@@ -103,4 +103,5 @@ func TestWriterRotatesOnAge(t *testing.T) {
 	time.Sleep(5 * time.Millisecond)
 	require.NoError(t, w.maybeRotateForAge())
 	assert.Equal(t, 1, countParquet(t, dir))
+	require.NoError(t, w.close())
 }
