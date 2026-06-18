@@ -18,6 +18,12 @@ import (
 
 var seq atomic.Int64
 
+// writeOnlyFile wraps *os.File and exposes only Write so that pqarrow.NewFileWriter
+// cannot close the underlying file descriptor via its own Close path.
+type writeOnlyFile struct{ f *os.File }
+
+func (w writeOnlyFile) Write(p []byte) (int, error) { return w.f.Write(p) }
+
 func newWriterProperties(compression string) *parquet.WriterProperties {
 	codec := compress.Codecs.Zstd
 	switch compression {
@@ -73,7 +79,7 @@ func (w *signalWriter) openLocked() error {
 		w.logger.Error("parquet: create file failed", zap.String("path", w.partPath), zap.Error(err))
 		return fmt.Errorf("create %s: %w", w.partPath, err)
 	}
-	fw, err := pqarrow.NewFileWriter(w.schema, f, w.props, pqarrow.DefaultWriterProps())
+	fw, err := pqarrow.NewFileWriter(w.schema, writeOnlyFile{f}, w.props, pqarrow.DefaultWriterProps())
 	if err != nil {
 		_ = f.Close()
 		return fmt.Errorf("new parquet writer: %w", err)
@@ -87,6 +93,11 @@ func (w *signalWriter) openLocked() error {
 
 // rotateLocked closes the open writer and atomically renames .part -> .parquet,
 // recording the outcome under the given reason.
+//
+// Order of operations: fw.Close() writes the Parquet footer into the file buffer,
+// then file.Sync() fsyncs the footer (and all prior data) to disk, then file.Close()
+// releases the fd, and finally os.Rename makes the complete file visible atomically.
+// This ensures a hard crash after the rename cannot produce a file with a missing footer.
 func (w *signalWriter) rotateLocked(reason string) error {
 	if w.fw == nil {
 		return nil
@@ -96,7 +107,16 @@ func (w *signalWriter) rotateLocked(reason string) error {
 	rows := w.rows
 	partPath := w.partPath
 
-	// Sync before closing so all data is on disk before the atomic rename.
+	// fw.Close() writes the Parquet footer. Because we passed a writeOnlyFile wrapper
+	// to pqarrow.NewFileWriter, pqarrow cannot close our *os.File — we retain ownership.
+	if err := w.fw.Close(); err != nil {
+		_ = w.file.Close()
+		w.reset()
+		w.tel.recordError(ctx, w.table, opWrite, err)
+		w.logger.Error("parquet: close writer failed", zap.String("path", partPath), zap.Error(err))
+		return fmt.Errorf("close parquet writer: %w", err)
+	}
+	// fsync after the footer is written so the complete file is durable before rename.
 	if err := w.file.Sync(); err != nil {
 		_ = w.file.Close()
 		w.reset()
@@ -104,18 +124,12 @@ func (w *signalWriter) rotateLocked(reason string) error {
 		w.logger.Error("parquet: fsync failed", zap.String("path", partPath), zap.Error(err))
 		return fmt.Errorf("sync: %w", err)
 	}
-	// fw.Close() writes the Parquet footer and closes the underlying *os.File.
-	if err := w.fw.Close(); err != nil {
-		w.reset()
-		w.tel.recordError(ctx, w.table, opWrite, err)
-		w.logger.Error("parquet: close writer failed", zap.String("path", partPath), zap.Error(err))
-		return fmt.Errorf("close parquet writer: %w", err)
-	}
-	// Obtain size after Close (footer is now written); file is already closed by fw.Close.
+	// Capture size while the fd is still open, then close it.
 	var size int64
-	if info, serr := os.Stat(partPath); serr == nil {
+	if info, serr := w.file.Stat(); serr == nil {
 		size = info.Size()
 	}
+	_ = w.file.Close()
 	final := partPath[:len(partPath)-len(".part")]
 	if err := os.Rename(partPath, final); err != nil {
 		w.reset()
