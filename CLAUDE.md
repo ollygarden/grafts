@@ -31,6 +31,14 @@ cd receiver/natsjetstreamreceiver
 go test -v ./... -run TestName
 ```
 
+### Before committing or pushing
+
+Run `make lint` (or `golangci-lint run ./<receiver|exporter>/<component>/...` for a
+single component). CI gates on it, and `go vet`/`go test` are **not** a substitute:
+golangci-lint additionally runs `errcheck` (unchecked error returns, e.g. a bare
+`defer f.Close()`) and `staticcheck` (including `SA1019` deprecated-API usage). Both
+have slipped past `go vet`/`go test` before — lint is the source of truth.
+
 ## Architecture
 
 ### Module Structure
@@ -74,6 +82,24 @@ Key files:
 - `factory.go`: Exporter factory
 - `exporter.go`: Publishing logic with sync/async modes and error classification
 
+**Parquet Exporter** (`exporter/parquetexporter/`):
+- Writes traces, metrics, and logs to local Parquet files for DuckDB consumption
+- Pure Go (no CGo) via apache/arrow-go; DuckDB reads files via read_parquet()
+- Schema mirrors the ClickHouse exporter: traces (+events/links), logs, and five
+  metric files (gauge/sum/histogram/exponential_histogram/summary)
+- Attribute maps stored as JSON strings; files rotate on time/rows/bytes with
+  atomic .part -> .parquet rename
+- Emits own metrics (parquetexporter.*) for rotation, rows/bytes, and I/O
+  errors (by operation + error.type); failures logged with the file path
+
+Key files:
+- `config.go`: Configuration struct with validation
+- `telemetry.go`: Self-telemetry instruments (rotation, errors) + error classification
+- `schema.go`: Arrow schemas for all signal tables
+- `writer.go`: Rotating Parquet writer with atomic rename + telemetry recording
+- `traces.go`/`logs.go`/`metrics.go`: OTLP -> Arrow record transforms
+- `exporter.go`: Lifecycle, background flush ticker, push methods
+
 **SNMP Receiver** (`receiver/snmpreceiver/`):
 - Polls SNMP targets for metrics and listens for traps/informs as logs
 - Supports SNMPv2c and SNMPv3 with named, reusable auth configurations
@@ -106,6 +132,13 @@ Key files:
 - `domain`: JetStream domain (required for clustered NATS deployments)
 - `subjects.traces/metrics/logs`: Subject patterns per signal type
 - `publish_async`: Whether to use async publishing (default: true)
+
+**Parquet Exporter** requires:
+- `directory`: Root directory for Parquet output (required)
+- `flush_interval`: Max age before rotating the open file (default 5m)
+- `max_rows`: Max rows before rotating (default 100000)
+- `max_bytes`: Max file size before rotating (default 128000000)
+- `compression`: Column compression — zstd, snappy, or none (default zstd)
 
 **SNMP Receiver** requires:
 - `auth`: Named auth configurations (`v2c` with community, or `v3` with USM credentials)
