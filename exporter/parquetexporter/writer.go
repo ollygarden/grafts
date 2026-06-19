@@ -155,7 +155,7 @@ func (w *signalWriter) reset() {
 	w.rows = 0
 }
 
-func (w *signalWriter) write(rec arrow.Record) error {
+func (w *signalWriter) write(rec arrow.RecordBatch) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.fw == nil {

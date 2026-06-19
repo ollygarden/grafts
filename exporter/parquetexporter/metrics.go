@@ -115,7 +115,7 @@ func numberValue(dp pmetric.NumberDataPoint) float64 {
 	return dp.DoubleValue()
 }
 
-func metricsToRecords(md pmetric.Metrics) map[metricKind]arrow.Record {
+func metricsToRecords(md pmetric.Metrics) map[metricKind]arrow.RecordBatch {
 	sets := map[metricKind]*builderSet{
 		kindGauge:        newBuilderSet(metricsGaugeSchema()),
 		kindSum:          newBuilderSet(metricsSumSchema()),
@@ -158,10 +158,10 @@ func metricsToRecords(md pmetric.Metrics) map[metricKind]arrow.Record {
 		}
 	}
 
-	out := map[metricKind]arrow.Record{}
+	out := map[metricKind]arrow.RecordBatch{}
 	for kind, bs := range sets {
 		if bs.rows > 0 {
-			out[kind] = bs.rb.NewRecord()
+			out[kind] = bs.rb.NewRecordBatch()
 		}
 	}
 	return out

@@ -29,12 +29,12 @@ func testTelemetry(t *testing.T) *telemetry {
 	return tel
 }
 
-func oneRowRecord(t *testing.T, schema *arrow.Schema, val string) arrow.Record {
+func oneRowRecord(t *testing.T, schema *arrow.Schema, val string) arrow.RecordBatch {
 	t.Helper()
 	rb := array.NewRecordBuilder(memory.DefaultAllocator, schema)
 	defer rb.Release()
 	rb.Field(0).(*array.StringBuilder).Append(val)
-	return rb.NewRecord()
+	return rb.NewRecordBatch()
 }
 
 func countParquet(t *testing.T, dir string) int {

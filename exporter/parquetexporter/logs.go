@@ -7,7 +7,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-func logsToRecord(ld plog.Logs) arrow.Record {
+func logsToRecord(ld plog.Logs) arrow.RecordBatch {
 	schema := logsSchema()
 	rb := array.NewRecordBuilder(memory.DefaultAllocator, schema)
 	defer rb.Release()
@@ -47,5 +47,5 @@ func logsToRecord(ld plog.Logs) arrow.Record {
 			}
 		}
 	}
-	return rb.NewRecord()
+	return rb.NewRecordBatch()
 }

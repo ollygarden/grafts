@@ -15,7 +15,7 @@ func serviceName(res pcommon.Resource) string {
 	return ""
 }
 
-func tracesToRecord(td ptrace.Traces) arrow.Record {
+func tracesToRecord(td ptrace.Traces) arrow.RecordBatch {
 	schema := tracesSchema()
 	rb := array.NewRecordBuilder(memory.DefaultAllocator, schema)
 	defer rb.Release()
@@ -36,7 +36,7 @@ func tracesToRecord(td ptrace.Traces) arrow.Record {
 			}
 		}
 	}
-	return rb.NewRecord()
+	return rb.NewRecordBatch()
 }
 
 // appendSpanRow appends exactly one value to every column builder in schema
