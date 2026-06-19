@@ -31,6 +31,14 @@ cd receiver/natsjetstreamreceiver
 go test -v ./... -run TestName
 ```
 
+### Before committing or pushing
+
+Run `make lint` (or `golangci-lint run ./<receiver|exporter>/<component>/...` for a
+single component). CI gates on it, and `go vet`/`go test` are **not** a substitute:
+golangci-lint additionally runs `errcheck` (unchecked error returns, e.g. a bare
+`defer f.Close()`) and `staticcheck` (including `SA1019` deprecated-API usage). Both
+have slipped past `go vet`/`go test` before — lint is the source of truth.
+
 ## Architecture
 
 ### Module Structure
