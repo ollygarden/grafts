@@ -20,6 +20,12 @@ func i32Field(name string) arrow.Field {
 func f64Field(name string) arrow.Field {
 	return arrow.Field{Name: name, Type: arrow.PrimitiveTypes.Float64}
 }
+
+// f64FieldNullable is for optional float64 columns (e.g. histogram Sum/Min/Max),
+// where an unset value must be NULL rather than 0 so consumers can tell them apart.
+func f64FieldNullable(name string) arrow.Field {
+	return arrow.Field{Name: name, Type: arrow.PrimitiveTypes.Float64, Nullable: true}
+}
 func boolField(name string) arrow.Field {
 	return arrow.Field{Name: name, Type: arrow.FixedWidthTypes.Boolean}
 }
@@ -87,18 +93,18 @@ func metricsSumSchema() *arrow.Schema {
 
 func metricsHistogramSchema() *arrow.Schema {
 	f := metricsCommonFields()
-	f = append(f, i64Field("Count"), f64Field("Sum"), i64ListField("BucketCounts"), f64ListField("ExplicitBounds"),
-		f64Field("Min"), f64Field("Max"), i32Field("AggregationTemporality"),
+	f = append(f, i64Field("Count"), f64FieldNullable("Sum"), i64ListField("BucketCounts"), f64ListField("ExplicitBounds"),
+		f64FieldNullable("Min"), f64FieldNullable("Max"), i32Field("AggregationTemporality"),
 		arrow.Field{Name: "Exemplars", Type: exemplarsType()})
 	return arrow.NewSchema(f, nil)
 }
 
 func metricsExpHistogramSchema() *arrow.Schema {
 	f := metricsCommonFields()
-	f = append(f, i64Field("Count"), f64Field("Sum"), i32Field("Scale"), i64Field("ZeroCount"),
+	f = append(f, i64Field("Count"), f64FieldNullable("Sum"), i32Field("Scale"), i64Field("ZeroCount"),
 		i32Field("PositiveOffset"), i64ListField("PositiveBucketCounts"),
 		i32Field("NegativeOffset"), i64ListField("NegativeBucketCounts"),
-		f64Field("Min"), f64Field("Max"), i32Field("AggregationTemporality"),
+		f64FieldNullable("Min"), f64FieldNullable("Max"), i32Field("AggregationTemporality"),
 		arrow.Field{Name: "Exemplars", Type: exemplarsType()})
 	return arrow.NewSchema(f, nil)
 }

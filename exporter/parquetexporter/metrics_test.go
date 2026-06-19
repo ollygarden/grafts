@@ -78,6 +78,44 @@ func TestMetricsToRecordsHistogram(t *testing.T) {
 	require.Equal(t, int64(1), hr.NumRows())
 	cIdx := hr.Schema().FieldIndices("Count")[0]
 	assert.Equal(t, int64(10), hr.Column(cIdx).(*array.Int64).Value(0))
+
+	// Sum/Min/Max were set, so they must be present (non-null) with their values.
+	for name, want := range map[string]float64{"Sum": 100.0, "Min": 1.0, "Max": 50.0} {
+		col := hr.Column(hr.Schema().FieldIndices(name)[0]).(*array.Float64)
+		require.False(t, col.IsNull(0), "%s should not be null when set", name)
+		assert.Equal(t, want, col.Value(0))
+	}
+}
+
+func TestMetricsToRecordsHistogramUnsetOptionals(t *testing.T) {
+	md := pmetric.NewMetrics()
+	rm := md.ResourceMetrics().AppendEmpty()
+	rm.Resource().Attributes().PutStr("service.name", "svc")
+	sm := rm.ScopeMetrics().AppendEmpty()
+
+	m := sm.Metrics().AppendEmpty()
+	m.SetName("latency")
+	h := m.SetEmptyHistogram()
+	dp := h.DataPoints().AppendEmpty()
+	dp.SetCount(10) // Count set; Sum/Min/Max deliberately left unset.
+	dp.BucketCounts().FromRaw([]uint64{2, 3, 5})
+	dp.ExplicitBounds().FromRaw([]float64{10.0, 20.0})
+
+	recs := metricsToRecords(md)
+	defer func() {
+		for _, r := range recs {
+			r.Release()
+		}
+	}()
+
+	hr, ok := recs[kindHistogram]
+	require.True(t, ok, "histogram record present")
+	require.Equal(t, int64(1), hr.NumRows())
+	// Unset Sum/Min/Max must serialize as NULL, not 0.
+	for _, name := range []string{"Sum", "Min", "Max"} {
+		col := hr.Column(hr.Schema().FieldIndices(name)[0]).(*array.Float64)
+		assert.True(t, col.IsNull(0), "%s should be null when unset", name)
+	}
 }
 
 func TestMetricsToRecordsExpHistogram(t *testing.T) {

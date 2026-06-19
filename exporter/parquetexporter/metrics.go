@@ -47,6 +47,17 @@ func (bs *builderSet) i32(name string, v int32) {
 func (bs *builderSet) f64(name string, v float64) {
 	bs.rb.Field(bs.idx(name)).(*array.Float64Builder).Append(v)
 }
+
+// f64OrNull appends v when has is true, otherwise a NULL, so unset optional
+// fields (e.g. histogram Sum/Min/Max) are distinguishable from a real 0.
+func (bs *builderSet) f64OrNull(name string, has bool, v float64) {
+	b := bs.rb.Field(bs.idx(name)).(*array.Float64Builder)
+	if has {
+		b.Append(v)
+	} else {
+		b.AppendNull()
+	}
+}
 func (bs *builderSet) boolean(name string, v bool) {
 	bs.rb.Field(bs.idx(name)).(*array.BooleanBuilder).Append(v)
 }
@@ -200,11 +211,11 @@ func appendMetric(sets map[metricKind]*builderSet, m pmetric.Metric, meta metric
 			dp := dps.At(i)
 			bs.common(meta, dp.Attributes(), dp.StartTimestamp(), dp.Timestamp(), uint32(dp.Flags()))
 			bs.i64("Count", int64(dp.Count()))
-			bs.f64("Sum", dp.Sum())
+			bs.f64OrNull("Sum", dp.HasSum(), dp.Sum())
 			bs.i64ListFromUint("BucketCounts", dp.BucketCounts().AsRaw())
 			bs.f64List("ExplicitBounds", dp.ExplicitBounds().AsRaw())
-			bs.f64("Min", dp.Min())
-			bs.f64("Max", dp.Max())
+			bs.f64OrNull("Min", dp.HasMin(), dp.Min())
+			bs.f64OrNull("Max", dp.HasMax(), dp.Max())
 			bs.i32("AggregationTemporality", int32(h.AggregationTemporality()))
 			bs.exemplars("Exemplars", dp.Exemplars())
 			bs.rows++
@@ -217,15 +228,15 @@ func appendMetric(sets map[metricKind]*builderSet, m pmetric.Metric, meta metric
 			dp := dps.At(i)
 			bs.common(meta, dp.Attributes(), dp.StartTimestamp(), dp.Timestamp(), uint32(dp.Flags()))
 			bs.i64("Count", int64(dp.Count()))
-			bs.f64("Sum", dp.Sum())
+			bs.f64OrNull("Sum", dp.HasSum(), dp.Sum())
 			bs.i32("Scale", dp.Scale())
 			bs.i64("ZeroCount", int64(dp.ZeroCount()))
 			bs.i32("PositiveOffset", dp.Positive().Offset())
 			bs.i64ListFromUint("PositiveBucketCounts", dp.Positive().BucketCounts().AsRaw())
 			bs.i32("NegativeOffset", dp.Negative().Offset())
 			bs.i64ListFromUint("NegativeBucketCounts", dp.Negative().BucketCounts().AsRaw())
-			bs.f64("Min", dp.Min())
-			bs.f64("Max", dp.Max())
+			bs.f64OrNull("Min", dp.HasMin(), dp.Min())
+			bs.f64OrNull("Max", dp.HasMax(), dp.Max())
 			bs.i32("AggregationTemporality", int32(eh.AggregationTemporality()))
 			bs.exemplars("Exemplars", dp.Exemplars())
 			bs.rows++
