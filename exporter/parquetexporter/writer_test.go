@@ -82,7 +82,9 @@ func TestWriterRoundTrip(t *testing.T) {
 	require.Len(t, matches, 1)
 	f, err := os.Open(matches[0])
 	require.NoError(t, err)
-	defer func() { require.NoError(t, f.Close()) }()
+	// rdr.Close() (deferred below, runs first) closes the underlying file; this
+	// is a defensive close for the NewParquetReader-error path, so ignore its error.
+	defer func() { _ = f.Close() }()
 	rdr, err := file.NewParquetReader(f)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, rdr.Close()) }()
