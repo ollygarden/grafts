@@ -82,10 +82,10 @@ func TestWriterRoundTrip(t *testing.T) {
 	require.Len(t, matches, 1)
 	f, err := os.Open(matches[0])
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { require.NoError(t, f.Close()) }()
 	rdr, err := file.NewParquetReader(f)
 	require.NoError(t, err)
-	defer rdr.Close()
+	defer func() { require.NoError(t, rdr.Close()) }()
 	assert.Equal(t, int64(1), rdr.NumRows())
 }
 
