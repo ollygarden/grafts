@@ -29,7 +29,10 @@ func createTracesExporter(
 	cfg component.Config,
 ) (exporter.Traces, error) {
 	oCfg := cfg.(*Config)
-	exp := newNatsJetStreamExporter(oCfg, set)
+	exp, err := newNatsJetStreamExporter(oCfg, set)
+	if err != nil {
+		return nil, err
+	}
 	return exporterhelper.NewTraces(
 		ctx,
 		set,
@@ -47,7 +50,10 @@ func createMetricsExporter(
 	cfg component.Config,
 ) (exporter.Metrics, error) {
 	oCfg := cfg.(*Config)
-	exp := newNatsJetStreamExporter(oCfg, set)
+	exp, err := newNatsJetStreamExporter(oCfg, set)
+	if err != nil {
+		return nil, err
+	}
 	return exporterhelper.NewMetrics(
 		ctx,
 		set,
@@ -65,7 +71,10 @@ func createLogsExporter(
 	cfg component.Config,
 ) (exporter.Logs, error) {
 	oCfg := cfg.(*Config)
-	exp := newNatsJetStreamExporter(oCfg, set)
+	exp, err := newNatsJetStreamExporter(oCfg, set)
+	if err != nil {
+		return nil, err
+	}
 	return exporterhelper.NewLogs(
 		ctx,
 		set,

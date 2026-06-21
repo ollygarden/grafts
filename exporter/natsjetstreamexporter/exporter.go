@@ -15,8 +15,13 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
+	"go.opentelemetry.io/otel/propagation"
 	"go.uber.org/zap"
 )
+
+// propagator injects W3C trace context into outbound NATS message headers so the
+// receiver can link its consume span to this exporter's send span.
+var propagator = propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
 
 // natsJetStreamExporter implements an exporter that publishes telemetry data
 // to NATS JetStream streams using OTLP protobuf format.
@@ -24,6 +29,7 @@ type natsJetStreamExporter struct {
 	config   *Config
 	settings exporter.Settings
 	logger   *zap.Logger
+	tel      *telemetry
 
 	// NATS resources
 	conn *nats.Conn
@@ -31,12 +37,17 @@ type natsJetStreamExporter struct {
 }
 
 // newNatsJetStreamExporter creates a new NATS JetStream exporter.
-func newNatsJetStreamExporter(cfg *Config, settings exporter.Settings) *natsJetStreamExporter {
+func newNatsJetStreamExporter(cfg *Config, settings exporter.Settings) (*natsJetStreamExporter, error) {
+	tel, err := newTelemetry(settings.TelemetrySettings)
+	if err != nil {
+		return nil, err
+	}
 	return &natsJetStreamExporter{
 		config:   cfg,
 		settings: settings,
 		logger:   settings.Logger,
-	}
+		tel:      tel,
+	}, nil
 }
 
 // Start establishes the NATS connection and JetStream context.
@@ -69,13 +80,23 @@ func (e *natsJetStreamExporter) Start(ctx context.Context, _ component.Host) err
 	}
 	e.conn = conn
 
+	// Async publishes complete after this call returns, so their failures cannot
+	// be surfaced through the push return value. This handler records them to the
+	// publish-errors counter so async data loss is observable.
+	asyncErrHandler := jetstream.WithPublishAsyncErrHandler(func(_ jetstream.JetStream, msg *nats.Msg, perr error) {
+		e.tel.recordPublishError(context.Background(), perr)
+		e.logger.Error("NATS async publish failed",
+			zap.String("subject", msg.Subject),
+			zap.Error(perr))
+	})
+
 	// Create JetStream context with optional domain
 	var js jetstream.JetStream
 	if e.config.Domain != "" {
 		e.logger.Info("Using JetStream domain", zap.String("domain", e.config.Domain))
-		js, err = jetstream.NewWithDomain(conn, e.config.Domain)
+		js, err = jetstream.NewWithDomain(conn, e.config.Domain, asyncErrHandler)
 	} else {
-		js, err = jetstream.New(conn)
+		js, err = jetstream.New(conn, asyncErrHandler)
 	}
 	if err != nil {
 		e.conn.Close()
@@ -163,63 +184,56 @@ func (e *natsJetStreamExporter) pushLogs(ctx context.Context, ld plog.Logs) erro
 	return e.publish(ctx, e.config.Subjects.Logs, data)
 }
 
-// publish sends data to NATS JetStream (sync or async based on config).
+// publish sends data to NATS JetStream (sync or async based on config). The
+// outbound message carries injected W3C trace context so the receiver can link
+// its consume span to the current export span.
 func (e *natsJetStreamExporter) publish(ctx context.Context, subject string, data []byte) error {
+	msg := nats.NewMsg(subject)
+	msg.Data = data
+	propagator.Inject(ctx, propagation.HeaderCarrier(msg.Header))
+
 	opts := []jetstream.PublishOpt{
 		jetstream.WithExpectStream(e.config.Stream),
 	}
 
 	if e.config.PublishAsync {
-		return e.publishAsync(subject, data, opts)
+		return e.publishAsync(msg, opts)
 	}
-	return e.publishSync(ctx, subject, data, opts)
+	return e.publishSync(ctx, msg, opts)
 }
 
 // publishSync performs synchronous publish with immediate acknowledgment.
 func (e *natsJetStreamExporter) publishSync(
 	ctx context.Context,
-	subject string,
-	data []byte,
+	msg *nats.Msg,
 	opts []jetstream.PublishOpt,
 ) error {
-	ack, err := e.js.Publish(ctx, subject, data, opts...)
+	ack, err := e.js.PublishMsg(ctx, msg, opts...)
 	if err != nil {
 		return e.classifyError(err)
 	}
 
 	e.logger.Debug("Message published (sync)",
-		zap.String("subject", subject),
+		zap.String("subject", msg.Subject),
 		zap.String("stream", ack.Stream),
 		zap.Uint64("seq", ack.Sequence))
 
 	return nil
 }
 
-// publishAsync performs asynchronous publish for higher throughput.
+// publishAsync performs asynchronous publish for higher throughput. The publish
+// completes after this returns, so per-message failures cannot be surfaced here;
+// they are reported by the async error handler registered in Start (which feeds
+// the publish-errors counter). Only a synchronous enqueue failure (e.g. the
+// async buffer is full) is returned, so exporterhelper can retry it.
 func (e *natsJetStreamExporter) publishAsync(
-	subject string,
-	data []byte,
+	msg *nats.Msg,
 	opts []jetstream.PublishOpt,
 ) error {
-	future, err := e.js.PublishAsync(subject, data, opts...)
-	if err != nil {
+	if _, err := e.js.PublishMsgAsync(msg, opts...); err != nil {
 		return e.classifyError(err)
 	}
-
-	// Check for immediate errors from previous async publishes
-	select {
-	case ack := <-future.Ok():
-		e.logger.Debug("Message published (async)",
-			zap.String("subject", subject),
-			zap.String("stream", ack.Stream),
-			zap.Uint64("seq", ack.Sequence))
-		return nil
-	case err := <-future.Err():
-		return e.classifyError(err)
-	default:
-		// Still pending - that's fine for async
-		return nil
-	}
+	return nil
 }
 
 // classifyError determines if an error is retryable or permanent.
