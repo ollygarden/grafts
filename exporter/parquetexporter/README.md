@@ -23,6 +23,58 @@ exporters:
     compression: zstd
 ```
 
+### Encryption at rest (optional)
+
+When the `encryption` block is set, files are written with Parquet Modular
+Encryption (AES-GCM) — footer and all columns are encrypted. Omit the block to
+write plaintext Parquet (the default).
+
+```yaml
+exporters:
+  parquet:
+    directory: /data/parquet
+    encryption:
+      key: ${env:PARQUET_ENCRYPTION_KEY}  # base64-encoded raw AES key, 16/24/32 bytes (AES-128/192/256)
+      key_id: "key1"                       # optional label, stored as footer-key metadata (the label, not the secret key)
+```
+
+The key is read from config at startup and held only in memory; it is never
+written to the Parquet files. A bad key (not base64, or not 16/24/32 bytes) fails
+collector startup.
+
+**Use a 32-byte (AES-256) key.** It is the only length that reads back from
+DuckDB without ambiguity — see the key-encoding note below.
+
+#### Reading encrypted files from DuckDB
+
+DuckDB reads Parquet Modular Encryption natively. Register the key, then pass an
+`encryption_config`:
+
+```sql
+PRAGMA add_parquet_key('key1', 'SeAyuMwdIt8FX6habMg2YkJPx3YqUpv9rImeb9BVvno=');
+SELECT * FROM read_parquet('traces/*.parquet',
+                           encryption_config = {footer_key: 'key1'});
+```
+
+**Key encoding (use a 32-byte key and pass your base64 `key` verbatim).**
+`add_parquet_key` accepts the key as either raw bytes or a base64 string, and it
+disambiguates by length: if the string you pass is itself 16, 24, or 32
+characters long, DuckDB treats it as a *raw* key; otherwise it base64-decodes it.
+
+- **32-byte (AES-256) key — recommended.** Its base64 form is 44 characters, so
+  DuckDB base64-decodes it correctly. Pass the same base64 string from your
+  `key` config directly to `add_parquet_key` (as shown above).
+- **16- or 24-byte keys — avoid.** Their base64 forms are 24 and 32 characters,
+  which collide with the raw-key lengths, so DuckDB misreads the base64 string as
+  a raw key and decryption fails. The only alternative is passing the raw decoded
+  bytes, which for a real (random) key are non-printable and cannot be written as
+  a SQL literal. Use a 32-byte key instead.
+
+Verified against DuckDB v1.5.1: a 32-byte key passed as its 44-character base64
+string reads the file back; the 24- and 32-character base64 strings of 16- and
+24-byte keys fail with "Computed AES tag differs". Re-check on your DuckDB
+version before relying on it in production.
+
 ## Layout
 
 Files are written per signal: `traces/`, `logs/`, and one directory per metric

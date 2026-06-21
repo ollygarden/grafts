@@ -1,10 +1,13 @@
 package parquetexporter
 
 import (
+	"bytes"
+	"encoding/base64"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -40,4 +43,48 @@ func TestValidate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateEncryption(t *testing.T) {
+	base := func() *Config {
+		c := createDefaultConfig().(*Config)
+		c.Directory = "/tmp/x"
+		return c
+	}
+	// 32 raw bytes -> AES-256, valid.
+	key32 := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
+	key16 := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 16))
+	key24 := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 24))
+	key20 := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 20))
+
+	t.Run("nil block is valid", func(t *testing.T) {
+		require.NoError(t, base().Validate())
+	})
+	t.Run("valid 16/24/32 byte keys", func(t *testing.T) {
+		for _, k := range []string{key16, key24, key32} {
+			c := base()
+			c.Encryption = &EncryptionConfig{Key: k}
+			require.NoError(t, c.Validate())
+		}
+	})
+	t.Run("key_id optional and allowed", func(t *testing.T) {
+		c := base()
+		c.Encryption = &EncryptionConfig{Key: key32, KeyID: "key1"}
+		require.NoError(t, c.Validate())
+	})
+	t.Run("missing key", func(t *testing.T) {
+		c := base()
+		c.Encryption = &EncryptionConfig{}
+		require.Error(t, c.Validate())
+	})
+	t.Run("invalid base64", func(t *testing.T) {
+		c := base()
+		c.Encryption = &EncryptionConfig{Key: "not!base64!!"}
+		require.Error(t, c.Validate())
+	})
+	t.Run("wrong key length", func(t *testing.T) {
+		c := base()
+		c.Encryption = &EncryptionConfig{Key: key20}
+		require.Error(t, c.Validate())
+	})
 }

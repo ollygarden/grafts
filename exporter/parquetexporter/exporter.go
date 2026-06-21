@@ -63,6 +63,11 @@ func metricSchemaByKind(kind metricKind) *arrow.Schema {
 
 func (e *parquetExporter) Start(_ context.Context, _ component.Host) error {
 	var err error
+	if e.cfg.Encryption != nil {
+		e.logger.Info("parquet: encryption at rest enabled",
+			zap.String("algorithm", "AES-GCM"),
+			zap.String("key_id", e.cfg.Encryption.KeyID))
+	}
 	if e.traces, err = newSignalWriter("traces", filepath.Join(e.cfg.Directory, "traces"), tracesSchema(), e.cfg, e.tel, e.logger); err != nil {
 		return err
 	}
