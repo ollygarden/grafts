@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 
 	"go.olly.garden/grafts/receiver/snmpreceiver/internal/connection"
@@ -26,15 +27,18 @@ type Poller struct {
 	targets  []TargetDef
 	interval time.Duration
 	consumer consumer.Metrics
+	obsrecv  *receiverhelper.ObsReport
 }
 
-// New creates a new Poller.
-func New(logger *zap.Logger, targets []TargetDef, interval time.Duration, consumer consumer.Metrics) *Poller {
+// New creates a new Poller. obsrecv records receiver-level throughput and
+// refusal metrics around the consume boundary.
+func New(logger *zap.Logger, targets []TargetDef, interval time.Duration, consumer consumer.Metrics, obsrecv *receiverhelper.ObsReport) *Poller {
 	return &Poller{
 		logger:   logger,
 		targets:  targets,
 		interval: interval,
 		consumer: consumer,
+		obsrecv:  obsrecv,
 	}
 }
 
@@ -102,7 +106,10 @@ func (p *Poller) collectAndSend(ctx context.Context, target *TargetDef) {
 	}
 
 	md := metrics.BuildMetrics(target.Host, target.Port, target.ResourceAttrs, allCollected)
-	if err := p.consumer.ConsumeMetrics(ctx, md); err != nil {
+	obsCtx := p.obsrecv.StartMetricsOp(ctx)
+	err := p.consumer.ConsumeMetrics(obsCtx, md)
+	p.obsrecv.EndMetricsOp(obsCtx, "snmp", md.DataPointCount(), err)
+	if err != nil {
 		p.logger.Warn("Failed to consume metrics",
 			zap.String("target", target.Host),
 			zap.Error(err))

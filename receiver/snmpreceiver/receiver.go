@@ -74,7 +74,7 @@ func (r *snmpReceiver) Start(ctx context.Context, _ component.Host) error {
 			cancel()
 			return fmt.Errorf("failed to build target definitions: %w", err)
 		}
-		p := poller.New(r.settings.Logger, targets, r.config.CollectionInterval, r.nextMetrics)
+		p := poller.New(r.settings.Logger, targets, r.config.CollectionInterval, r.nextMetrics, r.obsrecv)
 		r.shutdownWG.Add(1)
 		go func() {
 			defer r.shutdownWG.Done()
@@ -95,7 +95,7 @@ func (r *snmpReceiver) Start(ctx context.Context, _ component.Host) error {
 				Username:  auth.Username,
 			})
 		}
-		tr := trapper.New(r.settings.Logger, r.config.TrapListener.ListenAddress, authEntries, r.nextLogs)
+		tr := trapper.New(r.settings.Logger, r.config.TrapListener.ListenAddress, authEntries, r.nextLogs, r.obsrecv)
 		r.shutdownWG.Add(1)
 		go func() {
 			defer r.shutdownWG.Done()

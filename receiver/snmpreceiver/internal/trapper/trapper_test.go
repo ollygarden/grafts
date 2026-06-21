@@ -10,9 +10,24 @@ import (
 	"github.com/gosnmp/gosnmp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
+	"go.opentelemetry.io/collector/receiver/receivertest"
 	"go.uber.org/zap/zaptest"
 )
+
+// newTestObsReport builds an ObsReport backed by Nop telemetry for tests.
+func newTestObsReport(t *testing.T) *receiverhelper.ObsReport {
+	t.Helper()
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
+		ReceiverID:             component.MustNewID("snmp"),
+		Transport:              "snmp",
+		ReceiverCreateSettings: receivertest.NewNopSettings(component.MustNewType("snmp")),
+	})
+	require.NoError(t, err)
+	return obsrecv
+}
 
 // sendTestTrap sends a test SNMPv2c trap to the given address.
 func sendTestTrap(t *testing.T, addr, community, trapOID string) {
@@ -71,7 +86,7 @@ func waitForListenAddr(t *testing.T, tr *Trapper) string {
 func TestTrapperStartStop(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	sink := &consumertest.LogsSink{}
-	tr := New(logger, allocateUDPPort(t), nil, sink)
+	tr := New(logger, allocateUDPPort(t), nil, sink, newTestObsReport(t))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -95,7 +110,7 @@ func TestTrapperReceivesV2cTrap(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	sink := &consumertest.LogsSink{}
 	auth := []AuthEntry{{Version: "v2c", Community: "public"}}
-	tr := New(logger, allocateUDPPort(t), auth, sink)
+	tr := New(logger, allocateUDPPort(t), auth, sink, newTestObsReport(t))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -128,7 +143,7 @@ func TestTrapperRejectsWrongCommunity(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	sink := &consumertest.LogsSink{}
 	auth := []AuthEntry{{Version: "v2c", Community: "secret"}}
-	tr := New(logger, allocateUDPPort(t), auth, sink)
+	tr := New(logger, allocateUDPPort(t), auth, sink, newTestObsReport(t))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
