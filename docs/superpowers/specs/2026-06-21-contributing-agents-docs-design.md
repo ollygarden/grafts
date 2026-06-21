@@ -78,15 +78,14 @@ State explicitly that instrumentation is done using skills from
 
 ## AGENTS.md content
 
-- Move the existing `CLAUDE.md` sections verbatim: Overview, Build Commands,
-  Architecture (Module Structure, Distribution, Components, key files),
-  Configuration.
+- Move these `CLAUDE.md` sections into `AGENTS.md`: Overview, Architecture
+  (Module Structure, Distribution, Components, key files), and Configuration.
+- Do **not** copy the "Build Commands" / "Before committing or pushing" content
+  into `AGENTS.md`; those become canonical in `CONTRIBUTING.md`. `AGENTS.md`
+  links to `CONTRIBUTING.md` for build/test/lint instead.
 - Add a top line: "Read `CONTRIBUTING.md` first for project-wide conventions."
-- To avoid duplication, the build/test/lint commands and conventions become
-  canonical in `CONTRIBUTING.md`; `AGENTS.md` keeps the architecture/component
-  map and the Configuration reference, and references CONTRIBUTING.md for the
-  shared how-to. (The component architecture detail stays in AGENTS.md as the
-  agent's map of the codebase.)
+  The component architecture detail stays in `AGENTS.md` as the agent's map of
+  the codebase.
 - Add the **Development workflow** section (below).
 
 ### Development workflow section (AGENTS.md)
