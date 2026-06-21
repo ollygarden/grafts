@@ -60,7 +60,7 @@ type EncryptionConfig struct {
 }
 ```
 
-`Config` gains: `Encryption *EncryptionConfig `mapstructure:"encryption"``.
+`Config` gains an `Encryption *EncryptionConfig` field with the mapstructure tag `encryption`.
 
 **Validation** (extend `Config.Validate()`):
 - If `Encryption == nil`, skip (encryption disabled).
@@ -152,5 +152,5 @@ Per request, implementation follows:
 3. Implement (TDD where practical), run `make lint` + `make test`.
 4. Self-review the diff.
 5. Open a PR referencing the Linear issue.
-6. Wait for Code Rabbit comments and address the relevant ones
+6. Wait for CodeRabbit comments and address the relevant ones
 7. Once all CI and review steps are done, a human will review and merge.

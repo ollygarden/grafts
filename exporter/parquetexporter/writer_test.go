@@ -69,6 +69,18 @@ func TestWriterRotatesOnMaxRows(t *testing.T) {
 	assert.Empty(t, parts, "no leftover .part files")
 }
 
+func TestNewSignalWriterRejectsInvalidKey(t *testing.T) {
+	dir := t.TempDir()
+	cfg := createDefaultConfig().(*Config)
+	cfg.Directory = dir
+	// Bypass Config.Validate to confirm the writer itself surfaces a bad key
+	// rather than silently building a writer with an empty key.
+	cfg.Encryption = &EncryptionConfig{Key: "not!base64!!"}
+
+	_, err := newSignalWriter("test", dir, testSchema(), cfg, testTelemetry(t), zap.NewNop())
+	require.Error(t, err)
+}
+
 func TestWriterRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	cfg := createDefaultConfig().(*Config)

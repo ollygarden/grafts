@@ -24,7 +24,7 @@ type writeOnlyFile struct{ f *os.File }
 
 func (w writeOnlyFile) Write(p []byte) (int, error) { return w.f.Write(p) }
 
-func newWriterProperties(cfg *Config) *parquet.WriterProperties {
+func newWriterProperties(cfg *Config) (*parquet.WriterProperties, error) {
 	codec := compress.Codecs.Zstd
 	switch cfg.Compression {
 	case compressionSnappy:
@@ -34,8 +34,13 @@ func newWriterProperties(cfg *Config) *parquet.WriterProperties {
 	}
 	opts := []parquet.WriterProperty{parquet.WithCompression(codec)}
 	if cfg.Encryption != nil {
-		// Key validity is enforced by Config.Validate at startup; decode again here.
-		key, _ := cfg.Encryption.decodedKey()
+		// Config.Validate already enforces this at startup; we re-decode here and
+		// propagate rather than discard, so a writer built from an unvalidated
+		// config fails loudly instead of writing with an empty key.
+		key, err := cfg.Encryption.decodedKey()
+		if err != nil {
+			return nil, fmt.Errorf("decode encryption key: %w", err)
+		}
 		var encOpts []parquet.EncryptOption
 		if cfg.Encryption.KeyID != "" {
 			encOpts = append(encOpts, parquet.WithFooterKeyMetadata(cfg.Encryption.KeyID))
@@ -43,7 +48,7 @@ func newWriterProperties(cfg *Config) *parquet.WriterProperties {
 		fileEnc := parquet.NewFileEncryptionProperties(string(key), encOpts...)
 		opts = append(opts, parquet.WithEncryptionProperties(fileEnc))
 	}
-	return parquet.NewWriterProperties(opts...)
+	return parquet.NewWriterProperties(opts...), nil
 }
 
 // signalWriter owns a single open Parquet file for one signal table and
@@ -70,12 +75,16 @@ func newSignalWriter(table, dir string, schema *arrow.Schema, cfg *Config, tel *
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create dir %s: %w", dir, err)
 	}
+	props, err := newWriterProperties(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("build writer properties for %s: %w", table, err)
+	}
 	return &signalWriter{
 		table:  table,
 		dir:    dir,
 		schema: schema,
 		cfg:    cfg,
-		props:  newWriterProperties(cfg),
+		props:  props,
 		tel:    tel,
 		logger: logger,
 	}, nil
