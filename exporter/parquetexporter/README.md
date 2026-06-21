@@ -23,6 +23,54 @@ exporters:
     compression: zstd
 ```
 
+### Encryption at rest (optional)
+
+When the `encryption` block is set, files are written with Parquet Modular
+Encryption (AES-GCM) — footer and all columns are encrypted. Omit the block to
+write plaintext Parquet (the default).
+
+```yaml
+exporters:
+  parquet:
+    directory: /data/parquet
+    encryption:
+      key: ${env:PARQUET_ENCRYPTION_KEY}  # base64-encoded raw AES key, 16/24/32 bytes (AES-128/192/256)
+      key_id: "key1"                       # optional label, stored as footer-key metadata (never the key)
+```
+
+The key is read from config at startup and held only in memory; it is never
+written to the Parquet files. A bad key (not base64, or not 16/24/32 bytes) fails
+collector startup.
+
+#### Reading encrypted files from DuckDB
+
+DuckDB reads Parquet Modular Encryption natively. Register the key, then pass an
+`encryption_config`:
+
+```sql
+PRAGMA add_parquet_key('key1', '0123456789abcdef');
+SELECT * FROM read_parquet('traces/*.parquet',
+                           encryption_config = {footer_key: 'key1'});
+```
+
+**Key encoding:** the value passed to `add_parquet_key` must be the *raw key
+bytes* the exporter was given — that is, the bytes your base64 `key` decodes to,
+passed as a literal string. For example, if your base64 `key` is
+`MDEyMzQ1Njc4OWFiY2RlZg==`, the raw bytes it decodes to are the 16-character
+ASCII string `0123456789abcdef`, and that is exactly what you pass to
+`add_parquet_key`. Do **not** pass the base64 form to DuckDB.
+
+This was verified with DuckDB v1.5.1 using a 16-byte ASCII key:
+
+```bash
+$ duckdb -c "PRAGMA add_parquet_key('key1', '0123456789abcdef'); \
+             SELECT count(*) FROM read_parquet('/tmp/enc.parquet', \
+             encryption_config = {footer_key: 'key1'});"
+# Output: count_star() = 3  (matches the 3 rows written by the exporter)
+```
+
+Verify the round trip on your DuckDB version before relying on it in production.
+
 ## Layout
 
 Files are written per signal: `traces/`, `logs/`, and one directory per metric
