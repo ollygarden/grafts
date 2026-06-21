@@ -1,6 +1,8 @@
 package parquetexporter
 
 import (
+	"bytes"
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +11,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/parquet"
 	"github.com/apache/arrow-go/v18/parquet/file"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -106,4 +109,45 @@ func TestWriterRotatesOnAge(t *testing.T) {
 	require.NoError(t, w.maybeRotateForAge())
 	assert.Equal(t, 1, countParquet(t, dir))
 	require.NoError(t, w.close())
+}
+
+func TestWriterEncryptedRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	rawKey := bytes.Repeat([]byte{7}, 32)
+	cfg := createDefaultConfig().(*Config)
+	cfg.Directory = dir
+	cfg.Encryption = &EncryptionConfig{
+		Key:   base64.StdEncoding.EncodeToString(rawKey),
+		KeyID: "key1",
+	}
+
+	w, err := newSignalWriter("test", dir, testSchema(), cfg, testTelemetry(t), zap.NewNop())
+	require.NoError(t, err)
+	rec := oneRowRecord(t, testSchema(), "secret")
+	require.NoError(t, w.write(rec))
+	rec.Release()
+	require.NoError(t, w.close())
+
+	matches, _ := filepath.Glob(filepath.Join(dir, "*.parquet"))
+	require.Len(t, matches, 1)
+
+	// Without the key, opening must fail.
+	f1, err := os.Open(matches[0])
+	require.NoError(t, err)
+	defer func() { _ = f1.Close() }()
+	_, err = file.NewParquetReader(f1)
+	require.Error(t, err, "encrypted file must not open without a key")
+
+	// With the key, the row reads back.
+	f2, err := os.Open(matches[0])
+	require.NoError(t, err)
+	defer func() { _ = f2.Close() }()
+	props := parquet.NewReaderProperties(memory.DefaultAllocator)
+	props.FileDecryptProps = parquet.NewFileDecryptionProperties(
+		parquet.WithFooterKey(string(rawKey)),
+	)
+	rdr, err := file.NewParquetReader(f2, file.WithReadProps(props))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, rdr.Close()) }()
+	assert.Equal(t, int64(1), rdr.NumRows())
 }
