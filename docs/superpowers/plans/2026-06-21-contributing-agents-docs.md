@@ -146,7 +146,7 @@ Instrumentation work is done using skills from two repositories:
 
 Run:
 ```bash
-cd /Users/jpkroehling/Projects/src/github.com/ollygarden/grafts
+# from the repository root
 # fenced code blocks balanced (count of ``` lines is even):
 awk '/^```/{c++} END{print "fences:", c, (c%2==0?"OK":"UNBALANCED")}' CONTRIBUTING.md
 # linked local files exist:
@@ -326,7 +326,7 @@ Read it first — it is the codebase map and development workflow, and it points
 
 Run:
 ```bash
-cd /Users/jpkroehling/Projects/src/github.com/ollygarden/grafts
+# from the repository root
 # pointer chain:
 grep -q 'AGENTS.md' CLAUDE.md && echo "CLAUDE.md -> AGENTS.md OK"
 grep -q 'CONTRIBUTING.md' AGENTS.md && echo "AGENTS.md -> CONTRIBUTING.md OK"
@@ -343,7 +343,7 @@ Expected: both pointer lines print OK; `no build-command duplication in AGENTS.m
 
 Run:
 ```bash
-cd /Users/jpkroehling/Projects/src/github.com/ollygarden/grafts && git status --short
+git status --short  # run from the repository root
 ```
 Expected: only `AGENTS.md` (new) and `CLAUDE.md` (modified) staged/changed — no `.go` files. (No need to run `make lint`/`make test`: nothing in Go changed.)
 
