@@ -11,6 +11,7 @@ import (
 
 	"github.com/gosnmp/gosnmp"
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 
 	"go.olly.garden/grafts/receiver/snmpreceiver/internal/logs"
@@ -32,17 +33,20 @@ type Trapper struct {
 	listenAddr   string
 	acceptedAuth []AuthEntry
 	consumer     consumer.Logs
+	obsrecv      *receiverhelper.ObsReport
 	mu           sync.Mutex
 	resolvedAddr string
 }
 
-// New creates a new Trapper.
-func New(logger *zap.Logger, listenAddr string, acceptedAuth []AuthEntry, consumer consumer.Logs) *Trapper {
+// New creates a new Trapper. obsrecv records receiver-level throughput and
+// refusal metrics around the consume boundary.
+func New(logger *zap.Logger, listenAddr string, acceptedAuth []AuthEntry, consumer consumer.Logs, obsrecv *receiverhelper.ObsReport) *Trapper {
 	return &Trapper{
 		logger:       logger,
 		listenAddr:   listenAddr,
 		acceptedAuth: acceptedAuth,
 		consumer:     consumer,
+		obsrecv:      obsrecv,
 	}
 }
 
@@ -141,7 +145,10 @@ func (tr *Trapper) handleTrap(packet *gosnmp.SnmpPacket, addr *net.UDPAddr) {
 	}
 
 	pLogs := logs.BuildLog(trapData)
-	if err := tr.consumer.ConsumeLogs(context.Background(), pLogs); err != nil {
+	ctx := tr.obsrecv.StartLogsOp(context.Background())
+	err := tr.consumer.ConsumeLogs(ctx, pLogs)
+	tr.obsrecv.EndLogsOp(ctx, "snmp", pLogs.LogRecordCount(), err)
+	if err != nil {
 		tr.logger.Error("failed to consume trap logs", zap.Error(err))
 	}
 }

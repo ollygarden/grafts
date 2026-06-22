@@ -17,8 +17,14 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	"go.uber.org/zap"
 )
+
+// fetchErrorBackoff throttles the consume loop after a non-terminal iterator
+// error so a persistent failure cannot spin a tight, CPU-burning retry loop.
+const fetchErrorBackoff = time.Second
 
 // natsJetStreamReceiver implements a receiver that consumes telemetry data
 // from NATS JetStream streams using pull-based consumers.
@@ -40,6 +46,7 @@ type natsJetStreamReceiver struct {
 
 	// Observability
 	obsrecv *receiverhelper.ObsReport
+	tel     *telemetry
 
 	// Lifecycle management
 	cancel     context.CancelFunc
@@ -57,10 +64,16 @@ func newNatsJetStreamReceiver(cfg *Config, settings *receiver.Settings) (*natsJe
 		return nil, fmt.Errorf("failed to create obsreport: %w", err)
 	}
 
+	tel, err := newTelemetry(*settings)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create telemetry: %w", err)
+	}
+
 	return &natsJetStreamReceiver{
 		config:   cfg,
 		settings: settings,
 		obsrecv:  obsrecv,
+		tel:      tel,
 	}, nil
 }
 
@@ -257,6 +270,13 @@ func (r *natsJetStreamReceiver) signalLoop(ctx context.Context, signal string, i
 			r.settings.Logger.Error("Failed to get next message",
 				zap.String("signal", signal),
 				zap.Error(err))
+			r.tel.recordFetchError(ctx, signal)
+			// Back off so a persistent error does not spin a tight retry loop.
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(fetchErrorBackoff):
+			}
 			continue
 		}
 
@@ -269,9 +289,13 @@ func (r *natsJetStreamReceiver) signalLoop(ctx context.Context, signal string, i
 func (r *natsJetStreamReceiver) handleMessage(signal string, msg jetstream.Msg) {
 	data := msg.Data()
 
+	// Link to the producer's send span via context propagated in message headers,
+	// using the collector's configured propagator (no-op if none is configured).
+	msgCtx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.HeaderCarrier(msg.Headers()))
+
 	switch signal {
 	case "traces":
-		ctx := r.obsrecv.StartTracesOp(context.Background())
+		ctx := r.obsrecv.StartTracesOp(msgCtx)
 		req := ptraceotlp.NewExportRequest()
 		err := req.UnmarshalProto(data)
 		if err != nil {
@@ -292,7 +316,7 @@ func (r *natsJetStreamReceiver) handleMessage(signal string, msg jetstream.Msg) 
 		r.ackOrNak(msg, err)
 
 	case "metrics":
-		ctx := r.obsrecv.StartMetricsOp(context.Background())
+		ctx := r.obsrecv.StartMetricsOp(msgCtx)
 		req := pmetricotlp.NewExportRequest()
 		err := req.UnmarshalProto(data)
 		if err != nil {
@@ -313,7 +337,7 @@ func (r *natsJetStreamReceiver) handleMessage(signal string, msg jetstream.Msg) 
 		r.ackOrNak(msg, err)
 
 	case "logs":
-		ctx := r.obsrecv.StartLogsOp(context.Background())
+		ctx := r.obsrecv.StartLogsOp(msgCtx)
 		req := plogotlp.NewExportRequest()
 		err := req.UnmarshalProto(data)
 		if err != nil {
