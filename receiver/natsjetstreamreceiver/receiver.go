@@ -17,13 +17,10 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.uber.org/zap"
 )
-
-// propagator extracts W3C trace context from inbound NATS message headers so the
-// receiver's consume span links to the producer's send span.
-var propagator = propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
 
 // fetchErrorBackoff throttles the consume loop after a non-terminal iterator
 // error so a persistent failure cannot spin a tight, CPU-burning retry loop.
@@ -292,8 +289,9 @@ func (r *natsJetStreamReceiver) signalLoop(ctx context.Context, signal string, i
 func (r *natsJetStreamReceiver) handleMessage(signal string, msg jetstream.Msg) {
 	data := msg.Data()
 
-	// Link to the producer's send span via context propagated in message headers.
-	msgCtx := propagator.Extract(context.Background(), propagation.HeaderCarrier(msg.Headers()))
+	// Link to the producer's send span via context propagated in message headers,
+	// using the collector's configured propagator (no-op if none is configured).
+	msgCtx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.HeaderCarrier(msg.Headers()))
 
 	switch signal {
 	case "traces":

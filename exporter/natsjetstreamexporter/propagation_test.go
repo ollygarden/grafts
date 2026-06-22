@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/collector/exporter/exportertest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/trace"
@@ -29,6 +30,9 @@ func newTestTraces() ptrace.Traces {
 // TestPublishInjectsTraceContext verifies the exporter injects W3C trace context
 // into outbound NATS message headers, so a downstream receiver can link to it.
 func TestPublishInjectsTraceContext(t *testing.T) {
+	// Mirror an operator-configured collector propagator; the global default is a no-op.
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+
 	js := createEmbeddedNATS(t)
 	ctx := context.Background()
 
@@ -70,7 +74,7 @@ func TestPublishInjectsTraceContext(t *testing.T) {
 	require.NotNil(t, got)
 
 	// Extract via the same carrier the receiver uses and confirm the trace ID round-trips.
-	extracted := propagator.Extract(ctx, propagation.HeaderCarrier(got.Headers()))
+	extracted := otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(got.Headers()))
 	assert.Equal(t, traceID, trace.SpanContextFromContext(extracted).TraceID())
 }
 

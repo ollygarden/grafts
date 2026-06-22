@@ -16,6 +16,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 	"go.opentelemetry.io/collector/receiver/receivertest"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -44,6 +46,9 @@ func (c *traceCapturingConsumer) capturedTraceID() trace.TraceID {
 // context from inbound message headers, so its consume span links to the
 // producer's trace.
 func TestReceiverExtractsTraceContext(t *testing.T) {
+	// Mirror an operator-configured collector propagator; the global default is a no-op.
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+
 	js := createEmbeddedNATS(t)
 	ctx := context.Background()
 

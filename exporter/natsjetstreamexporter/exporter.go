@@ -15,13 +15,10 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.uber.org/zap"
 )
-
-// propagator injects W3C trace context into outbound NATS message headers so the
-// receiver can link its consume span to this exporter's send span.
-var propagator = propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
 
 // natsJetStreamExporter implements an exporter that publishes telemetry data
 // to NATS JetStream streams using OTLP protobuf format.
@@ -185,12 +182,13 @@ func (e *natsJetStreamExporter) pushLogs(ctx context.Context, ld plog.Logs) erro
 }
 
 // publish sends data to NATS JetStream (sync or async based on config). The
-// outbound message carries injected W3C trace context so the receiver can link
-// its consume span to the current export span.
+// outbound message carries trace context injected via the collector's configured
+// propagator, so the receiver can link its consume span to the current export
+// span. If no propagator is configured, injection is a no-op.
 func (e *natsJetStreamExporter) publish(ctx context.Context, subject string, data []byte) error {
 	msg := nats.NewMsg(subject)
 	msg.Data = data
-	propagator.Inject(ctx, propagation.HeaderCarrier(msg.Header))
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(msg.Header))
 
 	opts := []jetstream.PublishOpt{
 		jetstream.WithExpectStream(e.config.Stream),
