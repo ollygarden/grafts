@@ -66,8 +66,8 @@ Each pull request should:
   and design records when those contracts change.
 
 CodeRabbit reviews pull requests. Verify actionable findings before applying
-them and reply on each thread. Merge after required checks pass and relevant
-review feedback is addressed.
+them and reply on each thread. A human reviewer squash-merges; contributors and
+coding agents do not merge their own changes.
 
 By contributing, you agree that your contribution is provided under this
 repository's [Apache License 2.0](LICENSE). Never include credentials,
