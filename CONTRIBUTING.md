@@ -23,6 +23,7 @@ make lint
 make test
 make test-integration
 git diff --check
+test -z "${BASE_SHA:-}" || git diff --check "${BASE_SHA}...HEAD"
 ```
 
 `make lint` is the source of truth before pushing. It includes checks such as

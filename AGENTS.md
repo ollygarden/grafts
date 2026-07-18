@@ -22,6 +22,7 @@ make lint
 make test
 make test-integration
 git diff --check
+test -z "${BASE_SHA:-}" || git diff --check "${BASE_SHA}...HEAD"
 ```
 
 `make test-integration` exercises the SNMP receiver with Docker-backed
