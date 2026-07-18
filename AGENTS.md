@@ -142,18 +142,21 @@ implementations.
 
 ## Configuration
 
-- The NATS receiver requires `url`, `stream`, `consumer_name`, `domain`,
-  and `subjects.traces/metrics/logs`.
-- The NATS exporter requires `url`, `stream`, `domain`, signal subjects,
-  and `publish_async` (default `true`).
+- The NATS receiver requires `url`, `stream`, `consumer_name`, and at least one
+  signal subject. `domain` is optional for clustered JetStream deployments;
+  acknowledgement and connection settings have validated defaults.
+- The NATS exporter requires `url`, `stream`, and at least one signal subject.
+  `domain` is optional, `publish_async` defaults to `true`, and
+  `flush_timeout` defaults to 5 seconds.
 - The Parquet exporter requires `directory`. Defaults are
   `flush_interval: 5m`, `max_rows: 100000`, and
   `max_bytes: 128000000`; compression accepts `zstd`, `snappy`, or
   `none`. Encryption accepts a base64 AES key and optional `key_id`. Never
   commit real encryption keys.
-- The SNMP receiver requires named `auth` entries, `targets`, and
-  `metric_groups`; `trap_listener` is optional. The collection interval
-  defaults to 60 seconds and timeout to 5 seconds.
+- The SNMP receiver requires at least one polling `target` or a
+  `trap_listener`. Polling targets reference named `auth` and `metric_groups`;
+  trap-only configurations need neither when no accepted auth is configured.
+  The collection interval defaults to 60 seconds and timeout to 5 seconds.
 
 Keep component README examples, factory defaults, configuration validation,
 and `distributions/grafts/config.yaml` aligned when a configuration contract
