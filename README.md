@@ -16,6 +16,7 @@ Custom OpenTelemetry Collector components for OllyGarden.
 | Component | Status | Description |
 |-----------|--------|-------------|
 | [natsjetstreamexporter](exporter/natsjetstreamexporter/) | Alpha | Publishes traces, metrics, and logs to NATS JetStream streams |
+| [parquetexporter](exporter/parquetexporter/) | Alpha | Writes traces, metrics, and logs to rotating Parquet files for DuckDB |
 
 ## Building
 
@@ -28,6 +29,12 @@ make run     # Run with sample config
 ```
 
 For production use, see [OllyGarden Tulip](https://olly.garden/tulip).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation, commit, and
+pull-request expectations. [AGENTS.md](AGENTS.md) contains the repository map
+and change-specific engineering guidance.
 
 ## Questions and Answers
 

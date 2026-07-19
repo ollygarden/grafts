@@ -1,130 +1,197 @@
-# AGENTS.md
+# Grafts repository guide
 
-Guidance for coding agents working in this repository. **Read
-[CONTRIBUTING.md](CONTRIBUTING.md) first** for project-wide conventions
-(building, testing, commits, instrumentation). This file is the codebase map and
-the development workflow.
-
-## Overview
-
-Grafts is a collection of custom OpenTelemetry Collector components for
-OllyGarden. Components are "grafted" onto the standard collector via the
+Grafts is OllyGarden's public collection of custom OpenTelemetry Collector
+components. Components are grafted into a Collector distribution with the
 OpenTelemetry Collector Builder (OCB).
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for contributor setup, commit, and
+pull-request expectations. This guide is the codebase map and change-specific
+validation reference.
+
+## Development commands
+
+Use Go 1.26 to match CI. The root module declares Go 1.25 compatibility. The
+distribution build also requires the OCB `builder`; its Makefile installs the
+version pinned by `OCB_VERSION` when `builder` is not already available.
+
+```bash
+make tidy
+git diff --exit-code -- go.mod go.sum
+make build
+make lint
+make test
+make test-integration
+git diff --check
+test -z "${BASE_SHA:-}" || git diff --check "${BASE_SHA}...HEAD"
+```
+
+`make test-integration` exercises the SNMP receiver with Docker-backed
+dependencies and may skip tests when Docker is unavailable. `make fmt` and
+`make tidy` modify files; review their complete diff. For a focused test:
+
+```bash
+go test -v ./receiver/natsjetstreamreceiver/... -run TestName
+```
 
 ## Development workflow
 
-Applies to **feature or behavior changes** (new components, features, behavior
-changes). Trivial fixes (typos, comments, tiny localized bugfixes) skip
-brainstorm/spec/plan and may go straight to a branch and PR. Dependency PRs use
-the merge-bot skill.
+Substantial feature or behavior changes use the repository's established
+design workflow:
 
-1. Brainstorm the design with `superpowers:brainstorming` → spec in
+1. Brainstorm the design (with `superpowers:brainstorming` when available) and
+   record a specification in
    `docs/superpowers/specs/`.
-2. Write the implementation plan with `superpowers:writing-plans` → plan in
-   `docs/superpowers/plans/`.
-3. Create a Linear issue on the **Engineering** team.
-4. Branch off `main` using the branch name Linear suggests — branch *before* the
-   spec and plan are committed, so design docs land on the feature branch.
-5. Implement with `superpowers:subagent-driven-development` (per-task TDD plus
-   spec/quality review, then a final whole-branch review).
-6. `make lint` and `make test` must pass (see CONTRIBUTING.md).
-7. Open a PR referencing the Linear issue; include a `Co-Authored-By` trailer on
-   agent commits.
-8. Address CodeRabbit comments with `superpowers:receiving-code-review` — verify
-   each before applying; reply in the thread.
-9. A human reviews and squash-merges. The agent never merges.
-10. After merge, set the Linear issue to Done and delete the merged branch.
+2. Record the implementation plan (with `superpowers:writing-plans` when
+   available) in `docs/superpowers/plans/`.
+3. Create or link the appropriate issue. OllyGarden employees use the
+   Engineering team in Linear; external contributors should start with a
+   GitHub issue unless a maintainer directs otherwise.
+4. Branch from current `main` before committing the design documents.
+   OllyGarden employees use the branch name suggested by Linear.
+5. Implement with per-task tests and complete both focused and whole-branch
+   review. The established agent workflow uses
+   `superpowers:subagent-driven-development` when available.
+6. Run the relevant validation matrix below.
+7. Open a focused pull request and disclose risks, compatibility effects, and
+   exact validation results. Agent-authored commits include the appropriate
+   `Co-Authored-By` trailer.
+8. Verify CodeRabbit findings before applying them and reply on each thread;
+   use `superpowers:receiving-code-review` when available.
+9. A human reviewer squash-merges. Coding agents do not merge.
+10. OllyGarden employees mark the linked Linear issue Done and delete the
+    merged branch after merge.
+
+Typos, comments, and small localized fixes may skip the design documents.
+Renovate owns routine dependency pull requests; maintainers may use their
+merge-bot workflow for those PRs.
 
 ## Architecture
 
-### Module Structure
+### Module and distribution
 
-The repository uses a multi-module Go workspace:
+The repository has one Go module, `go.olly.garden/grafts`, rooted at
+`go.mod`. Receivers and exporters are packages in that module; do not add
+component-level modules.
 
-- Root module: `go.olly.garden/grafts` (placeholder)
-- Component modules: each component (e.g. `receiver/natsjetstreamreceiver`) is a
-  separate Go module with its own `go.mod`.
+`distributions/grafts/` contains:
 
-This structure is required by OCB, which references components as separate
-modules with `path:` for local development and `replaces:` directives.
+- `manifest.yaml`, the OCB manifest;
+- `config.yaml`, a sample Collector configuration;
+- `Makefile`, distribution build and validation commands.
 
-### Distribution
+The manifest references the root module with
+`gomod: go.olly.garden/grafts`, selects each component with its nested
+`import:` path, and uses the root through `path:` and `replaces:` during
+local builds.
+Preserve that combination. OCB writes generated artifacts under
+`distributions/grafts/build/`; they are ignored and must not be committed.
 
-The `distributions/grafts/` directory contains:
+Run the generated Collector with `make -C distributions/grafts run`, or
+validate the sample configuration without starting pipelines:
 
-- `manifest.yaml`: OCB manifest defining included components (receivers,
-  processors, exporters, extensions, connectors, providers)
-- `config.yaml`: sample collector configuration
-- `Makefile`: build automation using the `builder` CLI
-
-OCB generates the collector binary in `distributions/grafts/build/grafts`. To
-run it: `cd distributions/grafts && make run` (or `make validate`).
+```bash
+make -C distributions/grafts validate
+```
 
 ### Components
 
-**NATS JetStream Receiver** (`receiver/natsjetstreamreceiver/`):
+#### NATS JetStream receiver
 
-- Consumes traces, metrics, and logs from NATS JetStream using pull-based consumers
-- Uses a shared receiver pattern (single NATS connection for all signal types)
-- Expects OTLP protobuf format on configured subjects
-- Supports JetStream domains for clustered NATS deployments
+`receiver/natsjetstreamreceiver/` consumes traces, metrics, and logs from
+pull-based JetStream consumers. It shares one NATS connection across signal
+types, expects OTLP protobuf payloads, supports JetStream domains, and
+propagates trace context.
 
-Key files: `config.go` (config + validation), `factory.go` (shared instance via
-`sync.Once`), `receiver.go` (two-phase init with graceful shutdown).
+Key files are `config.go` for configuration and validation, `factory.go`
+for the `sync.Once` shared instance, `receiver.go` for two-phase
+initialization, delivery, and graceful shutdown, and `telemetry.go` for
+self-observability.
 
-**NATS JetStream Exporter** (`exporter/natsjetstreamexporter/`):
+#### NATS JetStream exporter
 
-- Publishes traces, metrics, and logs to NATS JetStream streams
-- Sync and async publishing modes for throughput/reliability trade-offs
-- OTLP protobuf format, compatible with the receiver above
-- Supports JetStream domains for clustered NATS deployments
+`exporter/natsjetstreamexporter/` publishes OTLP protobuf traces, metrics, and
+logs to JetStream. It supports synchronous and asynchronous publishing and
+classifies publish failures for Collector error handling and telemetry.
 
-Key files: `config.go`, `factory.go`, `exporter.go` (publishing with sync/async
-modes and error classification).
+Key files are `config.go`, `factory.go`, `exporter.go`, and
+`telemetry.go`.
 
-**Parquet Exporter** (`exporter/parquetexporter/`):
+#### Parquet exporter
 
-- Writes traces, metrics, and logs to local Parquet files for DuckDB consumption
-- Pure Go (no CGo) via apache/arrow-go; DuckDB reads via `read_parquet()`
-- Schema mirrors the ClickHouse exporter: traces (+events/links), logs, and five
-  metric files (gauge/sum/histogram/exponential_histogram/summary)
-- Attribute maps stored as JSON strings; files rotate on time/rows/bytes with
-  atomic `.part` → `.parquet` rename
-- Optional encryption at rest (Parquet Modular Encryption, AES-GCM)
-- Emits its own metrics (`parquetexporter.*`) for rotation, rows/bytes, and I/O
-  errors
+`exporter/parquetexporter/` writes local Parquet files for DuckDB without
+CGo through `apache/arrow-go`. Its schema mirrors the ClickHouse exporter:
+traces with events and links, logs, and gauge, sum, histogram, exponential
+histogram, and summary metric files. It stores attribute maps as JSON strings;
+rotates by time, rows, or bytes using atomic `.part`-to-`.parquet` renames;
+optionally uses Parquet Modular Encryption with AES-GCM; and emits
+`parquetexporter.*` metrics for rotation, rows, bytes, and I/O errors.
 
-Key files: `config.go`, `telemetry.go` (self-telemetry + error classification),
-`schema.go` (Arrow schemas), `writer.go` (rotating writer with atomic rename),
-`traces.go`/`logs.go`/`metrics.go` (OTLP → Arrow transforms), `exporter.go`
-(lifecycle, flush ticker, push methods).
+Key files are `schema.go`, `writer.go`, `traces.go`, `logs.go`,
+`metrics.go`, `exporter.go`, and `telemetry.go`.
 
-**SNMP Receiver** (`receiver/snmpreceiver/`):
+#### SNMP receiver
 
-- Polls SNMP targets for metrics and listens for traps/informs as logs
-- Supports SNMPv2c and SNMPv3 with named, reusable auth configurations
-- Metric groups define OID collections with table walks, index extraction, and
-  lookup chains
-- Trap listener converts SNMP traps to OTel log records with severity mapping
-- Uses `gosnmp/gosnmp` (pure Go, no CGo)
+`receiver/snmpreceiver/` polls SNMP targets for metrics and receives
+traps/informs as logs. It supports SNMPv2c and SNMPv3, reusable authentication
+configurations, metric groups, table walks, index extraction, lookup chains,
+and severity mapping. It uses the pure-Go `gosnmp/gosnmp` library.
 
-Key files: `config.go`, `factory.go` (shared instance for metrics + logs),
-`receiver.go` (orchestrator), `internal/connection/` (gosnmp wrapper + mock),
-`internal/poller/` (scheduler + collector), `internal/trapper/` (UDP trap
-listener), `internal/metrics/` (pmetric builder), `internal/logs/` (plog builder).
+Key files are `config.go`, `factory.go`, and `receiver.go`.
+`internal/connection/`, `internal/poller/`, `internal/trapper/`,
+`internal/metrics/`, and `internal/logs/` contain the protocol and signal
+implementations.
 
 ## Configuration
 
-**NATS JetStream Receiver** requires: `url`, `stream`, `consumer_name`, `domain`,
-and `subjects.traces/metrics/logs`.
+- The NATS receiver requires `url`, `stream`, `consumer_name`, and at least one
+  signal subject. `domain` is optional for clustered JetStream deployments;
+  acknowledgement and connection settings have validated defaults.
+- The NATS exporter requires `url`, `stream`, and at least one signal subject.
+  `domain` is optional, `publish_async` defaults to `true`, and
+  `flush_timeout` defaults to 5 seconds.
+- The Parquet exporter requires `directory`. Defaults are
+  `flush_interval: 5m`, `max_rows: 100000`, and
+  `max_bytes: 128000000`; compression accepts `zstd`, `snappy`, or
+  `none`. Encryption accepts a base64 AES key and optional `key_id`. Never
+  commit real encryption keys.
+- The SNMP receiver requires at least one polling `target` or a
+  `trap_listener`. Polling targets reference named `auth` and `metric_groups`;
+  trap-only configurations need neither when no accepted auth is configured.
+  The collection interval defaults to 60 seconds and timeout to 5 seconds.
 
-**NATS JetStream Exporter** requires: `url`, `stream`, `domain`,
-`subjects.traces/metrics/logs`, and `publish_async` (default: true).
+Keep component README examples, factory defaults, configuration validation,
+and `distributions/grafts/config.yaml` aligned when a configuration contract
+changes.
 
-**Parquet Exporter** requires `directory`; optional `flush_interval` (5m),
-`max_rows` (100000), `max_bytes` (128000000), `compression` (zstd/snappy/none),
-and `encryption` (base64 AES key + optional `key_id`).
+## Conventions and guardrails
 
-**SNMP Receiver** requires: `auth` (named v2c/v3 configs), `targets`,
-`metric_groups`, optional `trap_listener`, `collection_interval` (60s), `timeout`
-(5s).
+- Follow Collector component lifecycle and factory patterns. Use Collector nop
+  test settings for wiring and keep shared receiver/exporter instances safe
+  across signals.
+- Preserve NATS acknowledgement, retry, error classification, sync/async
+  semantics, and trace propagation. Test failure and shutdown paths, not only
+  successful delivery.
+- Keep components portable and prefer pure Go. Integration tests may use real
+  embedded or containerized dependencies; unit tests should not require them.
+- Use `require` for test preconditions and fatal assertions, `assert` for
+  non-fatal checks, and table-driven subtests where useful.
+- Follow OpenTelemetry semantic conventions for component telemetry. Preserve
+  bounded-cardinality attributes and `error.type` classification; never emit
+  payloads, credentials, community-submitted data, or encryption keys.
+- Parquet writes must retain atomic rotation and explicit flush/shutdown
+  behavior. Treat schema and encryption changes as compatibility-sensitive.
+- Do not edit generated files under `distributions/grafts/build/` or commit
+  build outputs.
+
+## Validation matrix
+
+| Change | Required validation |
+| --- | --- |
+| Documentation only | `git diff --check` and link/config example review |
+| Go source | `make tidy`, `make lint`, and `make test` |
+| Component configuration or factory | Go checks plus focused default, validation, and lifecycle tests |
+| NATS receiver/exporter | Go checks plus focused delivery, ack/retry, async, and propagation tests |
+| Parquet schema/writer/encryption | Go checks plus focused rotation, flush, compatibility, and encryption tests |
+| SNMP behavior | Go checks plus focused unit tests and `make test-integration` |
+| OCB manifest or distribution config | `make build` and `make -C distributions/grafts validate` |
+| Dependencies | Full CI-equivalent gate, distribution build, and tidy diff |
