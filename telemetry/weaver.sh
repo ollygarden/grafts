@@ -115,7 +115,14 @@ generate)
 	# The migration table names the exporter being replaced. That is a
 	# per-component fact, and component.yaml is where per-component facts live,
 	# so read it here rather than letting it into the shared template.
-	upstream="$(sed -n 's|^  repository: .*/\([^/]*\)$|\1|p' "${registry}/../component.yaml" | head -1)"
+	#
+	# A registry with no component.yaml beside it still generates -- that is how
+	# a component gets started -- it just gets a placeholder in the heading.
+	upstream="the upstream exporter"
+	component_file="$(dirname "${registry}")/component.yaml"
+	if [[ -f "${component_file}" ]]; then
+		upstream="$(sed -n 's|^  repository: .*/\([^/]*\)$|\1|p' "${component_file}" | head -1)"
+	fi
 	weaver "${registry}" -v "$(abs "${output}"):/out" \
 		"otel/weaver:${WEAVER_VERSION}" \
 		registry generate --v2 \
@@ -124,7 +131,7 @@ generate)
 		--policy /telemetry/policies/ \
 		-D "package_name=${4:-telemetry}" \
 		-D "promcompat_package=go.olly.garden/grafts/internal/promcompat" \
-		-D "upstream_exporter=${upstream:-the upstream exporter}" \
+		-D "upstream_exporter=${upstream}" \
 		go \
 		/out
 	# Jinja whitespace leaves blank lines that would fail CI's diff gate.
