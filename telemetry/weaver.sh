@@ -11,7 +11,8 @@
 #   ./telemetry/weaver.sh check    ./receiver/pgbouncerreceiver/telemetry/registry
 #   ./telemetry/weaver.sh generate ./receiver/pgbouncerreceiver/telemetry/registry \
 #                                  ./receiver/pgbouncerreceiver/internal/telemetry
-#   ./telemetry/weaver.sh diff     <baseline-registry> [registry-dir]
+#   ./telemetry/weaver.sh resolve  ./receiver/pgbouncerreceiver/telemetry/registry
+#   ./telemetry/weaver.sh diff     <baseline-registry> <registry-dir>
 set -euo pipefail
 
 # Pinned: schema validation behaviour changes between Weaver releases.
@@ -66,7 +67,7 @@ weaver() {
 }
 
 usage() {
-	echo "usage: $0 {check|generate|diff} <registry-dir> [output-dir|baseline-registry]" >&2
+	echo "usage: $0 {check|generate|resolve|diff} <registry-dir> [output-dir|baseline-registry]" >&2
 	exit 2
 }
 
@@ -111,6 +112,10 @@ generate)
 	output="${3:?$(usage)}"
 	fetch_semconv
 	mkdir -p "${output}"
+	# The migration table names the exporter being replaced. That is a
+	# per-component fact, and component.yaml is where per-component facts live,
+	# so read it here rather than letting it into the shared template.
+	upstream="$(sed -n 's|^  repository: .*/\([^/]*\)$|\1|p' "${registry}/../component.yaml" | head -1)"
 	weaver "${registry}" -v "$(abs "${output}"):/out" \
 		"otel/weaver:${WEAVER_VERSION}" \
 		registry generate --v2 \
@@ -119,6 +124,7 @@ generate)
 		--policy /telemetry/policies/ \
 		-D "package_name=${4:-telemetry}" \
 		-D "promcompat_package=go.olly.garden/grafts/internal/promcompat" \
+		-D "upstream_exporter=${upstream:-the upstream exporter}" \
 		go \
 		/out
 	# Jinja whitespace leaves blank lines that would fail CI's diff gate.

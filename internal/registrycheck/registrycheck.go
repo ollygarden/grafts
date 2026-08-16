@@ -10,7 +10,7 @@ package registrycheck
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 
 	yaml "go.yaml.in/yaml/v3"
@@ -77,31 +77,29 @@ func StabilityDisclosure(resolvedJSON, componentYAML []byte) error {
 	}
 
 	disclosed := map[string]bool{}
-	for _, name := range c.Stability.Stable {
-		disclosed[name] = true
-	}
-	for _, name := range c.Stability.ReleaseCandidate {
-		disclosed[name] = true
-	}
-	for _, name := range c.Stability.Development {
-		disclosed[name] = true
+	for _, level := range [][]string{c.Stability.Stable, c.Stability.ReleaseCandidate, c.Stability.Development} {
+		for _, name := range level {
+			disclosed[name] = true
+		}
 	}
 
 	undisclosed := map[string]string{}
-	for _, m := range append(append([]metric{}, r.Registry.Metrics...), r.Refinements.Metrics...) {
-		if !ours(m.Provenance) {
-			continue
-		}
-		// An upstream convention this registry refines: the metric name is
-		// upstream's, so its stability is upstream's too.
-		if isUpstreamName(m.Name, c.Component) && needsDisclosure(m.Stability) && !disclosed[m.Name] {
-			undisclosed[m.Name] = m.Stability
-		}
-		for _, a := range m.Attributes {
-			if a.Provenance.Source == "" || !needsDisclosure(a.Stability) || disclosed[a.Key] {
+	for _, list := range [][]metric{r.Registry.Metrics, r.Refinements.Metrics} {
+		for _, m := range list {
+			if !ours(m.Provenance) {
 				continue
 			}
-			undisclosed[a.Key] = a.Stability
+			// An upstream convention this registry refines: the metric name is
+			// upstream's, so its stability is upstream's too.
+			if isUpstreamName(m.Name, c.Component) && needsDisclosure(m.Stability) && !disclosed[m.Name] {
+				undisclosed[m.Name] = m.Stability
+			}
+			for _, a := range m.Attributes {
+				if a.Provenance.Source == "" || !needsDisclosure(a.Stability) || disclosed[a.Key] {
+					continue
+				}
+				undisclosed[a.Key] = a.Stability
+			}
 		}
 	}
 
@@ -113,14 +111,14 @@ func StabilityDisclosure(resolvedJSON, componentYAML []byte) error {
 	for name := range undisclosed {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "component.yaml does not disclose %d upstream convention(s) below stable:\n", len(names))
 	for _, name := range names {
 		fmt.Fprintf(&b, "  %s (%s)\n", name, undisclosed[name])
 	}
-	fmt.Fprintf(&b, "Add each under stability.%s in component.yaml, and say so in the README:\n", "<level>")
+	fmt.Fprint(&b, "Add each under the matching stability level in component.yaml, and say so in the README:\n")
 	fmt.Fprintf(&b, "a convention that can still be renamed must not be presented to users as settled.")
 	return fmt.Errorf("%s", b.String())
 }

@@ -13,7 +13,9 @@
 package promcompat
 
 import (
+	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -29,12 +31,59 @@ const ScopeSuffix = "/promcompat"
 // OTLP-to-Prometheus compatibility specification.
 const TargetInfo = "target_info"
 
+// Shape names an output shape a component can emit.
+//
+// This lives here rather than in each component because it is a program-wide
+// contract: every converted receiver offers the same `emit` setting with the
+// same values and the same errors, and a per-component copy would drift into
+// user-visible inconsistency across one distribution.
+type Shape string
+
+const (
+	// ShapeOTel is the semconv-aligned shape, and the default.
+	ShapeOTel Shape = "otel"
+	// ShapePrometheus additionally emits the series the upstream exporter
+	// produced, in their own instrumentation scope.
+	ShapePrometheus Shape = "prometheus"
+)
+
+// Emit is the `emit` configuration field, embedded by each component's Config.
+type Emit []Shape
+
+// Validate reports every problem with the emit list at once.
+func (e Emit) Validate() error {
+	if len(e) == 0 {
+		return errors.New("emit must name at least one of otel, prometheus")
+	}
+
+	var errs []error
+	seen := make(map[Shape]bool, len(e))
+	for _, shape := range e {
+		switch shape {
+		case ShapeOTel, ShapePrometheus:
+		default:
+			errs = append(errs, fmt.Errorf("emit: unknown shape %q, want otel or prometheus", shape))
+			continue
+		}
+		if seen[shape] {
+			errs = append(errs, fmt.Errorf("emit: %q listed twice", shape))
+		}
+		seen[shape] = true
+	}
+	return errors.Join(errs...)
+}
+
+// Has reports whether the given shape should be produced.
+func (e Emit) Has(shape Shape) bool {
+	return slices.Contains(e, shape)
+}
+
 // Source says how a Prometheus-shaped series is produced.
 type Source int
 
 const (
 	// SourceDerived means the series is a pure function of the OTel output, so
-	// Append reconstructs it with no help from the scraper.
+	// Table.Append reconstructs it with no help from the scraper.
 	SourceDerived Source = iota
 	// SourceNative means the OTel shape does not carry everything the series
 	// needs -- a deliberately dropped unbounded label, usually -- so the
@@ -61,11 +110,8 @@ type Entry struct {
 	Metric string
 	// Type is the Prometheus metric type of every series in Series.
 	Type string
-	// Source decides whether Append can build the series itself.
+	// Source decides whether Table.Append can build the series itself.
 	Source Source
-	// Disposition records how the upstream metric was treated, for the parity
-	// report.
-	Disposition string
 	// Labels maps an OTel attribute key to the Prometheus label it becomes. An
 	// attribute absent from this map is not carried into the compat series.
 	Labels map[string]string
@@ -76,31 +122,80 @@ type Entry struct {
 	Series []Series
 }
 
+// labelNames returns every Prometheus label an entry's series carry: the ones
+// mapped from OTel attributes, plus the ones only the scraper can supply.
+func (e Entry) labelNames() []string {
+	names := make([]string, 0, len(e.Labels)+len(e.Dropped))
+	for _, label := range e.Labels {
+		names = append(names, label)
+	}
+	names = append(names, e.Dropped...)
+	slices.Sort(names)
+	return names
+}
+
+// Table is a component's compat mapping, indexed for repeated use.
+//
+// Built once at startup rather than per scrape: the table is generated and
+// never changes, so validating it and indexing it on every collection interval
+// is work that buys nothing, and a malformed table is a startup error rather
+// than something that surfaces as a scrape failure.
+type Table struct {
+	scopeName    string
+	scopeVersion string
+	byMetric     map[string]Entry
+	// bySeries lets a scraper look a native series up by the upstream name it
+	// is about to write, so the name itself stays declared in the registry.
+	bySeries map[string]Entry
+}
+
+// NewTable indexes a generated compat table.
+func NewTable(entries []Entry, scopeName, scopeVersion string) (*Table, error) {
+	t := &Table{
+		scopeName:    scopeName,
+		scopeVersion: scopeVersion,
+		byMetric:     make(map[string]Entry, len(entries)),
+		bySeries:     make(map[string]Entry, len(entries)),
+	}
+	for _, entry := range entries {
+		if _, dup := t.byMetric[entry.Metric]; dup {
+			return nil, fmt.Errorf("promcompat: %s appears twice in the compat table", entry.Metric)
+		}
+		t.byMetric[entry.Metric] = entry
+
+		// Normalizing here keeps it off the per-datapoint path entirely: these
+		// names come from the registry and never change.
+		normalized := make(map[string]string, len(entry.Labels))
+		for key, label := range entry.Labels {
+			normalized[key] = NormalizeLabel(label)
+		}
+		entry.Labels = normalized
+
+		for _, series := range entry.Series {
+			t.bySeries[series.Name] = entry
+		}
+		t.byMetric[entry.Metric] = entry
+	}
+	return t, nil
+}
+
+// ScopeName is the instrumentation scope the compat series are written to.
+func (t *Table) ScopeName() string { return t.scopeName + ScopeSuffix }
+
 // Append writes the Prometheus-compatible view of md into a new scope on every
 // resource, leaving the OTel scopes untouched.
 //
 // SourceNative entries are skipped: their series cannot be rebuilt from output
-// that no longer carries the labels they need, so the scraper writes them into
-// the compat scope directly and Append must not duplicate them.
-//
-// scopeName is the component's own scope; the compat scope is that plus
-// ScopeSuffix.
-func Append(md pmetric.Metrics, table []Entry, scopeName, scopeVersion string) error {
-	index := make(map[string]Entry, len(table))
-	for _, entry := range table {
-		if _, dup := index[entry.Metric]; dup {
-			return fmt.Errorf("promcompat: %s appears twice in the compat table", entry.Metric)
-		}
-		index[entry.Metric] = entry
-	}
-
+// that no longer carries the labels they need, so the scraper writes them with
+// AppendNative and Append must not duplicate them.
+func (t *Table) Append(md pmetric.Metrics) {
 	rms := md.ResourceMetrics()
 	for i := 0; i < rms.Len(); i++ {
 		rm := rms.At(i)
 
 		compat := pmetric.NewScopeMetrics()
-		compat.Scope().SetName(scopeName + ScopeSuffix)
-		compat.Scope().SetVersion(scopeVersion)
+		compat.Scope().SetName(t.ScopeName())
+		compat.Scope().SetVersion(t.scopeVersion)
 		appendTargetInfo(rm.Resource(), compat.Metrics())
 
 		sms := rm.ScopeMetrics()
@@ -111,7 +206,7 @@ func Append(md pmetric.Metrics, table []Entry, scopeName, scopeVersion string) e
 			}
 			for k := 0; k < sm.Metrics().Len(); k++ {
 				metric := sm.Metrics().At(k)
-				entry, ok := index[metric.Name()]
+				entry, ok := t.byMetric[metric.Name()]
 				if !ok || entry.Source == SourceNative || len(entry.Series) == 0 {
 					continue
 				}
@@ -123,7 +218,6 @@ func Append(md pmetric.Metrics, table []Entry, scopeName, scopeVersion string) e
 			compat.MoveTo(rm.ScopeMetrics().AppendEmpty())
 		}
 	}
-	return nil
 }
 
 // Scope returns the compat scope's metrics on rm, creating the scope if it is
@@ -133,8 +227,8 @@ func Append(md pmetric.Metrics, table []Entry, scopeName, scopeVersion string) e
 // the OTel shape deliberately drops, so only the scraper can build them, and
 // they still have to land in the same scope as everything else for one filter
 // processor to remove the whole compat set.
-func Scope(rm pmetric.ResourceMetrics, scopeName, scopeVersion string) pmetric.MetricSlice {
-	name := scopeName + ScopeSuffix
+func (t *Table) Scope(rm pmetric.ResourceMetrics) pmetric.MetricSlice {
+	name := t.ScopeName()
 	sms := rm.ScopeMetrics()
 	for i := 0; i < sms.Len(); i++ {
 		if sms.At(i).Scope().Name() == name {
@@ -143,71 +237,122 @@ func Scope(rm pmetric.ResourceMetrics, scopeName, scopeVersion string) pmetric.M
 	}
 	sm := sms.AppendEmpty()
 	sm.Scope().SetName(name)
-	sm.Scope().SetVersion(scopeVersion)
+	sm.Scope().SetVersion(t.scopeVersion)
 	return sm.Metrics()
 }
 
 // AppendNative adds one scraper-built series to a compat metric slice.
-func AppendNative(dst pmetric.MetricSlice, name, promType string, value int64, labels map[string]string) {
+//
+// The series name is looked up in the table rather than trusted from the
+// caller, so a native series is still declared in the registry and renaming one
+// stays a registry change. A name the table does not know is a programming
+// error and returns one, rather than silently emitting a series no parity run
+// accounts for.
+func (t *Table) AppendNative(dst pmetric.MetricSlice, name string, value float64, isInt bool, labels map[string]string) error {
+	entry, ok := t.bySeries[name]
+	if !ok {
+		return fmt.Errorf("promcompat: %s is not a series any registry entry declares", name)
+	}
+	if want := entry.labelNames(); !matchesLabels(labels, want) {
+		return fmt.Errorf("promcompat: %s takes labels %v, got %v", name, want, keysOf(labels))
+	}
+
 	metric := dst.AppendEmpty()
 	metric.SetName(name)
 
-	var points pmetric.NumberDataPointSlice
-	if promType == "counter" {
-		sum := metric.SetEmptySum()
-		sum.SetIsMonotonic(true)
-		sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
-		points = sum.DataPoints()
+	dp := numberPoints(metric, entry.Type).AppendEmpty()
+	if isInt {
+		dp.SetIntValue(int64(value))
 	} else {
-		points = metric.SetEmptyGauge().DataPoints()
+		dp.SetDoubleValue(value)
 	}
+	for label, v := range labels {
+		dp.Attributes().PutStr(NormalizeLabel(label), v)
+	}
+	return nil
+}
 
-	dp := points.AppendEmpty()
+// AppendUndeclared adds a series the registry cannot declare, because it has no
+// OTel metric to hang off: a target's `up` and `version_info` describe the
+// scrape and the process rather than a measurement.
+//
+// Separate from AppendNative so that "this series is not in the registry" is an
+// explicit choice at the call site rather than a lookup that quietly failed.
+// Each one belongs in component.yaml's compat_only list with a reason.
+func AppendUndeclared(dst pmetric.MetricSlice, name, promType string, value int64, labels map[string]string) {
+	metric := dst.AppendEmpty()
+	metric.SetName(name)
+
+	dp := numberPoints(metric, promType).AppendEmpty()
 	dp.SetIntValue(value)
 	for label, v := range labels {
 		dp.Attributes().PutStr(NormalizeLabel(label), v)
 	}
 }
 
-// appendEntry renders one OTel metric as its upstream series. Every series the
-// entry declares is emitted, even with no matching datapoints: an upstream
-// exporter reports a pool state of zero rather than omitting the series, and a
-// disappearing series reads as a scrape failure to an alert.
+// numberPoints prepares a metric as a counter or a gauge and returns its
+// datapoints. A compat entry is only ever one of the two, because the upstream
+// exporters this replaces expose nothing else.
+func numberPoints(metric pmetric.Metric, promType string) pmetric.NumberDataPointSlice {
+	if promType == "counter" {
+		sum := metric.SetEmptySum()
+		sum.SetIsMonotonic(true)
+		sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+		return sum.DataPoints()
+	}
+	return metric.SetEmptyGauge().DataPoints()
+}
+
+// appendEntry renders one OTel metric as its upstream series.
+//
+// Every series the entry declares is emitted, even with no matching datapoints:
+// an upstream exporter reports a pool state of zero rather than omitting the
+// series, and a disappearing series reads as a scrape failure to an alert.
+//
+// One pass over the datapoints, not one per series: the entries that matter
+// most here are the merges, where a per-series rescan is quadratic in the
+// state count.
 func appendEntry(src pmetric.Metric, entry Entry, dst pmetric.MetricSlice) {
-	points := datapoints(src)
+	targets := make([]pmetric.NumberDataPointSlice, len(entry.Series))
+	for i, series := range entry.Series {
+		metric := dst.AppendEmpty()
+		metric.SetName(series.Name)
+		metric.SetDescription(src.Description())
+		metric.SetUnit(src.Unit())
+		targets[i] = numberPoints(metric, entry.Type)
+	}
 
-	for _, series := range entry.Series {
-		out := dst.AppendEmpty()
-		out.SetName(series.Name)
-		out.SetDescription(src.Description())
-		out.SetUnit(src.Unit())
-
-		var target pmetric.NumberDataPointSlice
-		if entry.Type == "counter" {
-			sum := out.SetEmptySum()
-			sum.SetIsMonotonic(true)
-			sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
-			target = sum.DataPoints()
-		} else {
-			target = out.SetEmptyGauge().DataPoints()
-		}
-
-		for l := 0; l < points.Len(); l++ {
-			dp := points.At(l)
+	points := DataPoints(src)
+	for i := 0; i < points.Len(); i++ {
+		dp := points.At(i)
+		for j, series := range entry.Series {
 			if !selects(dp.Attributes(), series.When) {
 				continue
 			}
-			outDP := target.AppendEmpty()
-			dp.CopyTo(outDP)
-			relabel(outDP.Attributes(), entry.Labels)
+			out := targets[j].AppendEmpty()
+			out.SetStartTimestamp(dp.StartTimestamp())
+			out.SetTimestamp(dp.Timestamp())
+			switch dp.ValueType() {
+			case pmetric.NumberDataPointValueTypeInt:
+				out.SetIntValue(dp.IntValue())
+			default:
+				out.SetDoubleValue(dp.DoubleValue())
+			}
+			// Only the mapped labels are carried, written straight across
+			// rather than copying the whole attribute map and overwriting it.
+			for key, label := range entry.Labels {
+				if value, ok := dp.Attributes().Get(key); ok {
+					out.Attributes().PutStr(label, value.AsString())
+				}
+			}
+			break
 		}
 	}
 }
 
-// datapoints returns a metric's numeric datapoints regardless of which shape
-// carries them. A compat entry is only ever a counter or a gauge, because the
-// upstream exporters this replaces expose nothing else.
-func datapoints(metric pmetric.Metric) pmetric.NumberDataPointSlice {
+// DataPoints returns a metric's numeric datapoints regardless of which shape
+// carries them.
+func DataPoints(metric pmetric.Metric) pmetric.NumberDataPointSlice {
 	switch metric.Type() {
 	case pmetric.MetricTypeSum:
 		return metric.Sum().DataPoints()
@@ -229,20 +374,6 @@ func selects(attrs pcommon.Map, when map[string]string) bool {
 	return true
 }
 
-// relabel replaces a datapoint's OTel attributes with the Prometheus labels the
-// entry maps them to. An attribute with no mapping is dropped: it either
-// selected the series, in which case the name already carries it, or the OTel
-// shape added it and the upstream series never had it.
-func relabel(attrs pcommon.Map, labels map[string]string) {
-	renamed := pcommon.NewMap()
-	for key, label := range labels {
-		if value, ok := attrs.Get(key); ok {
-			renamed.PutStr(NormalizeLabel(label), value.AsString())
-		}
-	}
-	renamed.CopyTo(attrs)
-}
-
 // appendTargetInfo renders the resource as target_info, the compatibility
 // specification's carrier for resource attributes.
 func appendTargetInfo(resource pcommon.Resource, dst pmetric.MetricSlice) {
@@ -259,6 +390,22 @@ func appendTargetInfo(resource pcommon.Resource, dst pmetric.MetricSlice) {
 	}
 }
 
+func matchesLabels(got map[string]string, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	return slices.Equal(keysOf(got), want)
+}
+
+func keysOf(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
 // NormalizeLabel makes an attribute key a legal Prometheus label name.
 //
 // Prometheus label names match [a-zA-Z_][a-zA-Z0-9_]*, so the dots in
@@ -268,6 +415,10 @@ func NormalizeLabel(key string) string {
 	if key == "" {
 		return "_"
 	}
+	if !needsNormalizing(key) {
+		return key
+	}
+
 	var b strings.Builder
 	b.Grow(len(key) + 1)
 	for i, r := range key {
@@ -284,4 +435,18 @@ func NormalizeLabel(key string) string {
 		}
 	}
 	return b.String()
+}
+
+// needsNormalizing avoids allocating for the common case: most label names are
+// already legal, and this runs per label per datapoint.
+func needsNormalizing(key string) bool {
+	for i, r := range key {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r == '_':
+		case r >= '0' && r <= '9' && i > 0:
+		default:
+			return true
+		}
+	}
+	return false
 }

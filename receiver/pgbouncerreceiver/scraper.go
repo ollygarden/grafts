@@ -68,13 +68,18 @@ type database struct {
 
 // scraper turns one PgBouncer admin scrape into metrics.
 type scraper struct {
-	cfg          *Config
-	client       client
-	mb           *telemetry.MetricsBuilder
-	self         *telemetry.SelfTelemetry
-	scopeName    string
-	scopeVersion string
-	version      string
+	cfg    *Config
+	client client
+	mb     *telemetry.MetricsBuilder
+	self   *telemetry.SelfTelemetry
+	compat *promcompat.Table
+
+	// Resolved once: the endpoint does not change, and re-parsing it every
+	// scrape to build a resource that is then copied wholesale is pure waste.
+	host string
+	port int64
+
+	version string
 }
 
 // scrape collects one round of metrics.
@@ -112,12 +117,9 @@ func (s *scraper) scrape(ctx context.Context) (pmetric.Metrics, error) {
 
 	md := s.mb.Emit(s.resource())
 
-	if s.cfg.emits(ShapePrometheus) && md.ResourceMetrics().Len() > 0 {
-		if err := promcompat.Append(md, telemetry.CompatTable, s.scopeName, s.scopeVersion); err != nil {
-			errs = append(errs, err)
-		} else {
-			s.recordNativeCompat(md, clients, dbRows, len(errs) == 0)
-		}
+	if s.cfg.Emit.Has(promcompat.ShapePrometheus) && md.ResourceMetrics().Len() > 0 {
+		s.compat.Append(md)
+		errs = append(errs, s.recordNativeCompat(md, clients, dbRows, len(errs) == 0)...)
 	}
 
 	s.self.RecordScrapeDuration(ctx, time.Since(started).Seconds())
@@ -128,8 +130,8 @@ func (s *scraper) scrape(ctx context.Context) (pmetric.Metrics, error) {
 func (s *scraper) resource() pcommon.Resource {
 	res := pcommon.NewResource()
 	res.Attributes().PutStr("db.system.name", "postgresql")
-	res.Attributes().PutStr("server.address", host(s.cfg.Endpoint))
-	res.Attributes().PutInt("server.port", port(s.cfg.Endpoint))
+	res.Attributes().PutStr("server.address", s.host)
+	res.Attributes().PutInt("server.port", s.port)
 	if s.version != "" {
 		res.Attributes().PutStr("pgbouncer.version", s.version)
 	}
@@ -189,13 +191,7 @@ func (s *scraper) recordDatabases(now pcommon.Timestamp, rows []Row) map[string]
 func (s *scraper) recordPools(now pcommon.Timestamp, rows []Row, databases map[string]database) {
 	for _, row := range rows {
 		alias, user := row["database"], row["user"]
-		db := databases[alias]
-		if db.alias == "" {
-			// A pool for a database SHOW DATABASES did not report. Keep the
-			// alias so the datapoint is still attributable, rather than
-			// dropping the pool.
-			db = database{alias: alias, namespace: alias}
-		}
+		db := lookup(databases, alias)
 		pool := poolName(db, user)
 
 		for _, st := range serverStates {
@@ -243,11 +239,7 @@ func (s *scraper) recordPools(now pcommon.Timestamp, rows []Row, databases map[s
 // recordStats reports the traffic pooled per database.
 func (s *scraper) recordStats(now pcommon.Timestamp, rows []Row, databases map[string]database) {
 	for _, row := range rows {
-		alias := row["database"]
-		db := databases[alias]
-		if db.alias == "" {
-			db = database{alias: alias, namespace: alias}
-		}
+		db := lookup(databases, row["database"])
 		ns := db.namespace
 
 		s.mb.RecordPgbouncerQueryCount(now, row.Int("total_query_count"),
@@ -306,34 +298,15 @@ func (s *scraper) recordLists(now pcommon.Timestamp, rows []Row) {
 	s.mb.RecordPgbouncerPoolCount(now, lists["pools"])
 	s.mb.RecordPgbouncerDNSQueryCount(now, lists["dns_pending"])
 
-	for _, c := range []struct {
-		list  string
-		state string
-	}{
-		{"free_clients", telemetry.AttributePgbouncerClientStateFree},
-		{"used_clients", telemetry.AttributePgbouncerClientStateUsed},
-		{"login_clients", telemetry.AttributePgbouncerClientStateLogin},
-	} {
-		s.mb.RecordPgbouncerClientCount(now, lists[c.list], telemetry.PgbouncerClientCountAttributes{PgbouncerClientState: c.state})
-	}
-	for _, c := range []struct {
-		list  string
-		state string
-	}{
-		{"free_servers", telemetry.AttributePgbouncerServerStateFree},
-		{"used_servers", telemetry.AttributePgbouncerServerStateUsed},
-	} {
-		s.mb.RecordPgbouncerServerCount(now, lists[c.list], telemetry.PgbouncerServerCountAttributes{PgbouncerServerState: c.state})
-	}
-	for _, c := range []struct {
-		list      string
-		cacheType string
-	}{
-		{"dns_names", telemetry.AttributePgbouncerDNSCacheTypeName},
-		{"dns_zones", telemetry.AttributePgbouncerDNSCacheTypeZone},
-	} {
-		s.mb.RecordPgbouncerDNSCacheCount(now, lists[c.list], telemetry.PgbouncerDNSCacheCountAttributes{PgbouncerDNSCacheType: c.cacheType})
-	}
+	s.mb.RecordPgbouncerClientCount(now, lists["free_clients"], telemetry.PgbouncerClientCountAttributes{PgbouncerClientState: telemetry.AttributePgbouncerClientStateFree})
+	s.mb.RecordPgbouncerClientCount(now, lists["used_clients"], telemetry.PgbouncerClientCountAttributes{PgbouncerClientState: telemetry.AttributePgbouncerClientStateUsed})
+	s.mb.RecordPgbouncerClientCount(now, lists["login_clients"], telemetry.PgbouncerClientCountAttributes{PgbouncerClientState: telemetry.AttributePgbouncerClientStateLogin})
+
+	s.mb.RecordPgbouncerServerCount(now, lists["free_servers"], telemetry.PgbouncerServerCountAttributes{PgbouncerServerState: telemetry.AttributePgbouncerServerStateFree})
+	s.mb.RecordPgbouncerServerCount(now, lists["used_servers"], telemetry.PgbouncerServerCountAttributes{PgbouncerServerState: telemetry.AttributePgbouncerServerStateUsed})
+
+	s.mb.RecordPgbouncerDNSCacheCount(now, lists["dns_names"], telemetry.PgbouncerDNSCacheCountAttributes{PgbouncerDNSCacheType: telemetry.AttributePgbouncerDNSCacheTypeName})
+	s.mb.RecordPgbouncerDNSCacheCount(now, lists["dns_zones"], telemetry.PgbouncerDNSCacheCountAttributes{PgbouncerDNSCacheType: telemetry.AttributePgbouncerDNSCacheTypeZone})
 }
 
 // recordConfig reports the two limits the upstream exporter surfaces from
@@ -360,15 +333,12 @@ func (s *scraper) recordConfig(now pcommon.Timestamp, rows []Row) {
 // scope keeps it, which is why this entry is the component's one native one.
 func (s *scraper) recordClients(now pcommon.Timestamp, rows []Row, databases map[string]database) {
 	type key struct{ alias, user, state string }
-	counts := make(map[key]int64)
+	counts := make(map[key]int64, len(rows))
 	for _, row := range rows {
 		counts[key{row["database"], row["user"], row["state"]}]++
 	}
 	for k, count := range counts {
-		db := databases[k.alias]
-		if db.alias == "" {
-			db = database{alias: k.alias, namespace: k.alias}
-		}
+		db := lookup(databases, k.alias)
 		s.mb.RecordPgbouncerClientConnectionDetailCount(now, count, telemetry.PgbouncerClientConnectionDetailCountAttributes{
 			DBNamespace:            db.namespace,
 			PgbouncerClientState:   k.state,
@@ -380,45 +350,47 @@ func (s *scraper) recordClients(now pcommon.Timestamp, rows []Row, databases map
 
 // recordNativeCompat writes the compat series that cannot be rebuilt from the
 // OTel output, because the OTel shape drops labels they carry.
-func (s *scraper) recordNativeCompat(md pmetric.Metrics, clients, databases []Row, complete bool) {
-	if md.ResourceMetrics().Len() == 0 {
-		return
+func (s *scraper) recordNativeCompat(md pmetric.Metrics, clients, databases []Row, complete bool) []error {
+	dst := s.compat.Scope(md.ResourceMetrics().At(0))
+	var errs []error
+	native := func(name string, value float64, labels map[string]string) {
+		if err := s.compat.AppendNative(dst, name, value, true, labels); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	dst := promcompat.Scope(md.ResourceMetrics().At(0), s.scopeName, s.scopeVersion)
 
-	// Alerting on `pgbouncer_up == 0` is close to universal, so the compat
-	// scope carries it rather than leaving those alerts silently broken.
+	// Neither of the next two is in the registry, and neither can be: the
+	// registry declares OTel metrics and their compat views, while these
+	// describe the scrape and the process rather than a measurement. Both are
+	// listed in component.yaml's compat_only with a reason.
 	//
-	// It is not an exact reproduction, and the difference matters: the upstream
-	// exporter always answers a scrape, so a completely unreachable PgBouncer
-	// still produces `pgbouncer_up 0`. This receiver emits nothing at all in
-	// that case, so the series goes stale instead of going to zero. Alert on
-	// absence as well as on zero, or move to the Collector's own receiver
-	// health signal.
+	// Alerting on `pgbouncer_up` reaching zero is close to universal, so the
+	// compat scope carries it rather than leaving those alerts silently broken.
+	// It is not an exact reproduction: the upstream exporter always answers a
+	// scrape, so an unreachable PgBouncer still yields zero, while this receiver
+	// emits nothing at all and the series goes stale instead. Alert on absence
+	// as well as on zero.
 	up := int64(0)
 	if complete {
 		up = 1
 	}
-	promcompat.AppendNative(dst, "pgbouncer_up", "gauge", up, nil)
+	promcompat.AppendUndeclared(dst, "pgbouncer_up", "gauge", up, nil)
 
-	// pgbouncer_version_info has no OTel metric to derive from: the version is a
-	// resource attribute in the OTel shape, and target_info carries it there.
-	// A user's dashboards still refer to the series, so the compat scope keeps
-	// it under its own name.
+	// The version is a resource attribute in the OTel shape and reaches
+	// Prometheus through target_info, but dashboards refer to this name.
 	if s.version != "" {
-		promcompat.AppendNative(dst, "pgbouncer_version_info", "gauge", 1, map[string]string{
-			"version": s.version,
-		})
+		promcompat.AppendUndeclared(dst, "pgbouncer_version_info", "gauge", 1, map[string]string{"version": s.version})
 	}
 
-	// pgbouncer_client_connections keeps application_name.
+	// pgbouncer_client_connections keeps application_name, which the OTel shape
+	// drops as unbounded.
 	type clientKey struct{ database, user, appName, state string }
-	counts := make(map[clientKey]int64)
+	counts := make(map[clientKey]int64, len(clients))
 	for _, row := range clients {
 		counts[clientKey{row["database"], row["user"], row["application_name"], row["state"]}]++
 	}
 	for k, count := range counts {
-		promcompat.AppendNative(dst, "pgbouncer_client_connections", "gauge", count, map[string]string{
+		native("pgbouncer_client_connections", float64(count), map[string]string{
 			"database":         k.database,
 			"user":             k.user,
 			"application_name": k.appName,
@@ -426,9 +398,8 @@ func (s *scraper) recordNativeCompat(md pmetric.Metrics, clients, databases []Ro
 		})
 	}
 
-	// The pgbouncer_databases_* family keeps force_user and pool_mode, which
-	// are configuration rather than measurement and so stay out of the OTel
-	// shape.
+	// The pgbouncer_databases_* family keeps force_user and pool_mode, which are
+	// configuration rather than measurement and so stay out of the OTel shape.
 	for _, row := range databases {
 		labels := map[string]string{
 			"name":       row["name"],
@@ -438,17 +409,33 @@ func (s *scraper) recordNativeCompat(md pmetric.Metrics, clients, databases []Ro
 			"force_user": row["force_user"],
 			"pool_mode":  row["pool_mode"],
 		}
-		for name, column := range map[string]string{
-			"pgbouncer_databases_pool_size":           "pool_size",
-			"pgbouncer_databases_current_connections": "current_connections",
-			"pgbouncer_databases_max_connections":     "max_connections",
-			"pgbouncer_databases_reserve_pool":        "reserve_pool_size",
-			"pgbouncer_databases_paused":              "paused",
-			"pgbouncer_databases_disabled":            "disabled",
-		} {
-			promcompat.AppendNative(dst, name, "gauge", row.Int(column), labels)
+		for _, m := range databaseCompat {
+			native(m.series, float64(row.Int(m.column)), labels)
 		}
 	}
+	return errs
+}
+
+// databaseCompat maps each SHOW DATABASES column to the upstream series that
+// carries it. The names are checked against the registry by AppendNative, so a
+// rename stays a registry change rather than a search for string literals.
+var databaseCompat = []struct{ series, column string }{
+	{"pgbouncer_databases_pool_size", "pool_size"},
+	{"pgbouncer_databases_current_connections", "current_connections"},
+	{"pgbouncer_databases_max_connections", "max_connections"},
+	{"pgbouncer_databases_reserve_pool", "reserve_pool_size"},
+	{"pgbouncer_databases_paused", "paused"},
+	{"pgbouncer_databases_disabled", "disabled"},
+}
+
+// lookup resolves an alias to its database, falling back to a stand-in when
+// SHOW DATABASES did not report it. Keeping the alias means the datapoint stays
+// attributable rather than being dropped.
+func lookup(databases map[string]database, alias string) database {
+	if db, ok := databases[alias]; ok {
+		return db
+	}
+	return database{alias: alias, namespace: alias}
 }
 
 // poolName builds `db.client.connection.pool.name`.

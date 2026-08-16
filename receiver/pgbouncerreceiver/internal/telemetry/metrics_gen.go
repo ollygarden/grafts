@@ -218,6 +218,10 @@ func (m *metricDBClientConnectionCount) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -271,6 +275,10 @@ func (m *metricDBClientConnectionIdleMin) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -324,6 +332,10 @@ func (m *metricDBClientConnectionMax) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -380,6 +392,10 @@ func (m *metricDBClientConnectionPendingRequests) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -436,6 +452,10 @@ func (m *metricPgbouncerClientConnectionCount) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -486,6 +506,10 @@ func (m *metricPgbouncerClientConnectionDetailCount) emit(ms pmetric.MetricSlice
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -520,6 +544,10 @@ func (m *metricPgbouncerClientConnectionMax) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -561,6 +589,10 @@ func (m *metricPgbouncerClientCount) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -606,6 +638,10 @@ func (m *metricPgbouncerClientWaitMax) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Gauge().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Gauge().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -650,6 +686,10 @@ func (m *metricPgbouncerClientWaitTime) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -700,6 +740,10 @@ func (m *metricPgbouncerDatabaseConnectionCount) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -750,6 +794,10 @@ func (m *metricPgbouncerDatabaseConnectionMax) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -784,6 +832,10 @@ func (m *metricPgbouncerDatabaseCount) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -832,6 +884,10 @@ func (m *metricPgbouncerDatabaseDisabled) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Gauge().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Gauge().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -880,6 +936,10 @@ func (m *metricPgbouncerDatabasePaused) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Gauge().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Gauge().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -930,6 +990,10 @@ func (m *metricPgbouncerDatabaseReservePoolSize) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -971,6 +1035,10 @@ func (m *metricPgbouncerDNSCacheCount) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -1005,6 +1073,10 @@ func (m *metricPgbouncerDNSQueryCount) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -1052,6 +1124,10 @@ func (m *metricPgbouncerNetworkIO) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -1086,6 +1162,10 @@ func (m *metricPgbouncerPoolCount) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -1136,6 +1216,10 @@ func (m *metricPgbouncerPreparedStatementCount) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -1180,6 +1264,10 @@ func (m *metricPgbouncerQueryCount) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -1224,6 +1312,10 @@ func (m *metricPgbouncerQueryTime) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -1268,6 +1360,10 @@ func (m *metricPgbouncerServerAssignmentCount) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -1309,6 +1405,10 @@ func (m *metricPgbouncerServerCount) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -1353,6 +1453,10 @@ func (m *metricPgbouncerTransactionCount) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -1397,6 +1501,10 @@ func (m *metricPgbouncerTransactionTime) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -1431,6 +1539,10 @@ func (m *metricPgbouncerUserConnectionMax) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -1465,6 +1577,10 @@ func (m *metricPgbouncerUserCount) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.Sum().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.Sum().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -1475,7 +1591,6 @@ func (m *metricPgbouncerUserCount) emit(ms pmetric.MetricSlice) {
 // It is not safe for concurrent use: a scraper owns one and drives it from a
 // single scrape.
 type MetricsBuilder struct {
-	config                                     MetricsConfig
 	startTime                                  pcommon.Timestamp
 	scopeName                                  string
 	scopeVersion                               string
@@ -1515,7 +1630,6 @@ type MetricsBuilder struct {
 // from a genuine drop.
 func NewMetricsBuilder(config MetricsConfig, startTime pcommon.Timestamp, scopeName, scopeVersion string) *MetricsBuilder {
 	mb := &MetricsBuilder{
-		config:                                     config,
 		startTime:                                  startTime,
 		scopeName:                                  scopeName,
 		scopeVersion:                               scopeVersion,

@@ -101,7 +101,7 @@ func fixtureRows() map[Command][]Row {
 	}
 }
 
-func newTestScraper(t *testing.T, client client, emit ...Shape) *scraper {
+func newTestScraper(t *testing.T, client client, emit ...promcompat.Shape) *scraper {
 	t.Helper()
 
 	cfg, ok := createDefaultConfig().(*Config)
@@ -113,14 +113,17 @@ func newTestScraper(t *testing.T, client client, emit ...Shape) *scraper {
 
 	self, err := telemetry.NewSelfTelemetry(noopmetric.NewMeterProvider(), scopeName)
 	require.NoError(t, err)
+	compat, err := promcompat.NewTable(telemetry.CompatTable, scopeName, "test")
+	require.NoError(t, err)
 
 	return &scraper{
-		cfg:          cfg,
-		client:       client,
-		mb:           telemetry.NewMetricsBuilder(cfg.Metrics, pcommon.NewTimestampFromTime(time.Now()), scopeName, "test"),
-		self:         self,
-		scopeName:    scopeName,
-		scopeVersion: "test",
+		cfg:    cfg,
+		client: client,
+		mb:     telemetry.NewMetricsBuilder(cfg.Metrics, pcommon.NewTimestampFromTime(time.Now()), scopeName, "test"),
+		self:   self,
+		compat: compat,
+		host:   host(cfg.Endpoint),
+		port:   port(cfg.Endpoint),
 	}
 }
 
@@ -335,7 +338,7 @@ func TestScrapeWithNoDataProducesNothing(t *testing.T) {
 }
 
 func TestScrapeOTelOnlyEmitsNoCompatScope(t *testing.T) {
-	s := newTestScraper(t, &fakeClient{rows: fixtureRows()}, ShapeOTel)
+	s := newTestScraper(t, &fakeClient{rows: fixtureRows()}, promcompat.ShapeOTel)
 
 	md, err := s.scrape(t.Context())
 	require.NoError(t, err)
@@ -344,7 +347,7 @@ func TestScrapeOTelOnlyEmitsNoCompatScope(t *testing.T) {
 }
 
 func TestScrapeCompatShapeReproducesUpstreamSeries(t *testing.T) {
-	s := newTestScraper(t, &fakeClient{rows: fixtureRows()}, ShapeOTel, ShapePrometheus)
+	s := newTestScraper(t, &fakeClient{rows: fixtureRows()}, promcompat.ShapeOTel, promcompat.ShapePrometheus)
 
 	md, err := s.scrape(t.Context())
 	require.NoError(t, err)
@@ -371,7 +374,7 @@ func TestScrapeCompatShapeReproducesUpstreamSeries(t *testing.T) {
 }
 
 func TestScrapeCompatKeepsUnboundedLabelsNatively(t *testing.T) {
-	s := newTestScraper(t, &fakeClient{rows: fixtureRows()}, ShapeOTel, ShapePrometheus)
+	s := newTestScraper(t, &fakeClient{rows: fixtureRows()}, promcompat.ShapeOTel, promcompat.ShapePrometheus)
 
 	md, err := s.scrape(t.Context())
 	require.NoError(t, err)

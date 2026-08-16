@@ -22,7 +22,6 @@ var CompatTable = []promcompat.Entry{
 		Metric:      "{{ metric.name }}",
 		Type:        "{{ prom_type(metric) }}",
 		Source:      promcompat.Source{{ prom.compat_source | pascal_case }},
-		Disposition: "{{ prom.disposition }}",
 {%- if prom.labels %}
 		Labels: map[string]string{
 {%- for key, label in prom.labels | items %}

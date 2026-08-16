@@ -19,7 +19,7 @@ import (
 // a chosen few, so an entry added to the registry is covered the moment it is
 // generated.
 func TestDerivedCompatIsAPureFunctionOfOTelOutput(t *testing.T) {
-	s := newTestScraper(t, &fakeClient{rows: fixtureRows()}, ShapeOTel, ShapePrometheus)
+	s := newTestScraper(t, &fakeClient{rows: fixtureRows()}, promcompat.ShapeOTel, promcompat.ShapePrometheus)
 
 	md, err := s.scrape(t.Context())
 	require.NoError(t, err)
@@ -95,7 +95,7 @@ func TestCompatTableCoversEveryDroppedLabelNatively(t *testing.T) {
 // one filter processor on the scope name has to remove the entire compat set
 // and leave the OTel shape untouched.
 func TestCompatScopeIsSeparable(t *testing.T) {
-	s := newTestScraper(t, &fakeClient{rows: fixtureRows()}, ShapeOTel, ShapePrometheus)
+	s := newTestScraper(t, &fakeClient{rows: fixtureRows()}, promcompat.ShapeOTel, promcompat.ShapePrometheus)
 
 	md, err := s.scrape(t.Context())
 	require.NoError(t, err)

@@ -11,10 +11,9 @@ import "go.olly.garden/grafts/internal/promcompat"
 // series another entry already owns.
 var CompatTable = []promcompat.Entry{
 	{
-		Metric:      "db.client.connection.count",
-		Type:        "gauge",
-		Source:      promcompat.SourceDerived,
-		Disposition: "merge",
+		Metric: "db.client.connection.count",
+		Type:   "gauge",
+		Source: promcompat.SourceDerived,
 		Labels: map[string]string{
 			"pgbouncer.database.alias": "database",
 			"pgbouncer.user":           "user",
@@ -65,16 +64,14 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "db.client.connection.idle.min",
-		Type:        "gauge",
-		Source:      promcompat.SourceDerived,
-		Disposition: "extra",
+		Metric: "db.client.connection.idle.min",
+		Type:   "gauge",
+		Source: promcompat.SourceDerived,
 	},
 	{
-		Metric:      "db.client.connection.max",
-		Type:        "gauge",
-		Source:      promcompat.SourceNative,
-		Disposition: "map",
+		Metric: "db.client.connection.max",
+		Type:   "gauge",
+		Source: promcompat.SourceNative,
 		Labels: map[string]string{
 			"db.namespace":             "database",
 			"pgbouncer.database.alias": "name",
@@ -92,16 +89,14 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "db.client.connection.pending_requests",
-		Type:        "gauge",
-		Source:      promcompat.SourceDerived,
-		Disposition: "split",
+		Metric: "db.client.connection.pending_requests",
+		Type:   "gauge",
+		Source: promcompat.SourceDerived,
 	},
 	{
-		Metric:      "pgbouncer.client.connection.count",
-		Type:        "gauge",
-		Source:      promcompat.SourceDerived,
-		Disposition: "merge",
+		Metric: "pgbouncer.client.connection.count",
+		Type:   "gauge",
+		Source: promcompat.SourceDerived,
 		Labels: map[string]string{
 			"pgbouncer.database.alias": "database",
 			"pgbouncer.user":           "user",
@@ -134,10 +129,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.client.connection.detail.count",
-		Type:        "gauge",
-		Source:      promcompat.SourceNative,
-		Disposition: "map",
+		Metric: "pgbouncer.client.connection.detail.count",
+		Type:   "gauge",
+		Source: promcompat.SourceNative,
 		Labels: map[string]string{
 			"pgbouncer.client.state":   "state",
 			"pgbouncer.database.alias": "database",
@@ -153,10 +147,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.client.connection.max",
-		Type:        "gauge",
-		Source:      promcompat.SourceDerived,
-		Disposition: "rename",
+		Metric: "pgbouncer.client.connection.max",
+		Type:   "gauge",
+		Source: promcompat.SourceDerived,
 		Series: []promcompat.Series{
 			{
 				Name: "pgbouncer_config_max_client_connections",
@@ -164,10 +157,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.client.count",
-		Type:        "gauge",
-		Source:      promcompat.SourceDerived,
-		Disposition: "merge",
+		Metric: "pgbouncer.client.count",
+		Type:   "gauge",
+		Source: promcompat.SourceDerived,
 		Series: []promcompat.Series{
 			{
 				Name: "pgbouncer_free_clients",
@@ -190,10 +182,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.client.wait.max",
-		Type:        "gauge",
-		Source:      promcompat.SourceDerived,
-		Disposition: "rename",
+		Metric: "pgbouncer.client.wait.max",
+		Type:   "gauge",
+		Source: promcompat.SourceDerived,
 		Labels: map[string]string{
 			"pgbouncer.database.alias": "database",
 			"pgbouncer.user":           "user",
@@ -205,10 +196,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.client.wait.time",
-		Type:        "counter",
-		Source:      promcompat.SourceDerived,
-		Disposition: "rename",
+		Metric: "pgbouncer.client.wait.time",
+		Type:   "counter",
+		Source: promcompat.SourceDerived,
 		Labels: map[string]string{
 			"pgbouncer.database.alias": "database",
 		},
@@ -219,10 +209,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.database.connection.count",
-		Type:        "gauge",
-		Source:      promcompat.SourceNative,
-		Disposition: "rename",
+		Metric: "pgbouncer.database.connection.count",
+		Type:   "gauge",
+		Source: promcompat.SourceNative,
 		Labels: map[string]string{
 			"db.namespace":             "database",
 			"pgbouncer.database.alias": "name",
@@ -240,10 +229,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.database.connection.max",
-		Type:        "gauge",
-		Source:      promcompat.SourceNative,
-		Disposition: "rename",
+		Metric: "pgbouncer.database.connection.max",
+		Type:   "gauge",
+		Source: promcompat.SourceNative,
 		Labels: map[string]string{
 			"db.namespace":             "database",
 			"pgbouncer.database.alias": "name",
@@ -261,10 +249,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.database.count",
-		Type:        "gauge",
-		Source:      promcompat.SourceDerived,
-		Disposition: "rename",
+		Metric: "pgbouncer.database.count",
+		Type:   "gauge",
+		Source: promcompat.SourceDerived,
 		Series: []promcompat.Series{
 			{
 				Name: "pgbouncer_databases",
@@ -272,10 +259,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.database.disabled",
-		Type:        "gauge",
-		Source:      promcompat.SourceNative,
-		Disposition: "map",
+		Metric: "pgbouncer.database.disabled",
+		Type:   "gauge",
+		Source: promcompat.SourceNative,
 		Labels: map[string]string{
 			"db.namespace":             "database",
 			"pgbouncer.database.alias": "name",
@@ -293,10 +279,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.database.paused",
-		Type:        "gauge",
-		Source:      promcompat.SourceNative,
-		Disposition: "map",
+		Metric: "pgbouncer.database.paused",
+		Type:   "gauge",
+		Source: promcompat.SourceNative,
 		Labels: map[string]string{
 			"db.namespace":             "database",
 			"pgbouncer.database.alias": "name",
@@ -314,10 +299,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.database.reserve_pool.size",
-		Type:        "gauge",
-		Source:      promcompat.SourceNative,
-		Disposition: "rename",
+		Metric: "pgbouncer.database.reserve_pool.size",
+		Type:   "gauge",
+		Source: promcompat.SourceNative,
 		Labels: map[string]string{
 			"db.namespace":             "database",
 			"pgbouncer.database.alias": "name",
@@ -335,10 +319,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.dns.cache.count",
-		Type:        "gauge",
-		Source:      promcompat.SourceDerived,
-		Disposition: "merge",
+		Metric: "pgbouncer.dns.cache.count",
+		Type:   "gauge",
+		Source: promcompat.SourceDerived,
 		Series: []promcompat.Series{
 			{
 				Name: "pgbouncer_cached_dns_names",
@@ -355,10 +338,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.dns.query.count",
-		Type:        "gauge",
-		Source:      promcompat.SourceDerived,
-		Disposition: "rename",
+		Metric: "pgbouncer.dns.query.count",
+		Type:   "gauge",
+		Source: promcompat.SourceDerived,
 		Series: []promcompat.Series{
 			{
 				Name: "pgbouncer_in_flight_dns_queries",
@@ -366,10 +348,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.network.io",
-		Type:        "counter",
-		Source:      promcompat.SourceDerived,
-		Disposition: "merge",
+		Metric: "pgbouncer.network.io",
+		Type:   "counter",
+		Source: promcompat.SourceDerived,
 		Labels: map[string]string{
 			"pgbouncer.database.alias": "database",
 		},
@@ -389,10 +370,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.pool.count",
-		Type:        "gauge",
-		Source:      promcompat.SourceDerived,
-		Disposition: "rename",
+		Metric: "pgbouncer.pool.count",
+		Type:   "gauge",
+		Source: promcompat.SourceDerived,
 		Series: []promcompat.Series{
 			{
 				Name: "pgbouncer_pools",
@@ -400,10 +380,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.prepared_statement.count",
-		Type:        "counter",
-		Source:      promcompat.SourceDerived,
-		Disposition: "merge",
+		Metric: "pgbouncer.prepared_statement.count",
+		Type:   "counter",
+		Source: promcompat.SourceDerived,
 		Labels: map[string]string{
 			"pgbouncer.database.alias": "database",
 		},
@@ -431,10 +410,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.query.count",
-		Type:        "counter",
-		Source:      promcompat.SourceDerived,
-		Disposition: "rename",
+		Metric: "pgbouncer.query.count",
+		Type:   "counter",
+		Source: promcompat.SourceDerived,
 		Labels: map[string]string{
 			"pgbouncer.database.alias": "database",
 		},
@@ -445,10 +423,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.query.time",
-		Type:        "counter",
-		Source:      promcompat.SourceDerived,
-		Disposition: "rename",
+		Metric: "pgbouncer.query.time",
+		Type:   "counter",
+		Source: promcompat.SourceDerived,
 		Labels: map[string]string{
 			"pgbouncer.database.alias": "database",
 		},
@@ -459,10 +436,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.server.assignment.count",
-		Type:        "counter",
-		Source:      promcompat.SourceDerived,
-		Disposition: "rename",
+		Metric: "pgbouncer.server.assignment.count",
+		Type:   "counter",
+		Source: promcompat.SourceDerived,
 		Labels: map[string]string{
 			"pgbouncer.database.alias": "database",
 		},
@@ -473,10 +449,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.server.count",
-		Type:        "gauge",
-		Source:      promcompat.SourceDerived,
-		Disposition: "merge",
+		Metric: "pgbouncer.server.count",
+		Type:   "gauge",
+		Source: promcompat.SourceDerived,
 		Series: []promcompat.Series{
 			{
 				Name: "pgbouncer_free_servers",
@@ -493,10 +468,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.transaction.count",
-		Type:        "counter",
-		Source:      promcompat.SourceDerived,
-		Disposition: "rename",
+		Metric: "pgbouncer.transaction.count",
+		Type:   "counter",
+		Source: promcompat.SourceDerived,
 		Labels: map[string]string{
 			"pgbouncer.database.alias": "database",
 		},
@@ -507,10 +481,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.transaction.time",
-		Type:        "counter",
-		Source:      promcompat.SourceDerived,
-		Disposition: "rename",
+		Metric: "pgbouncer.transaction.time",
+		Type:   "counter",
+		Source: promcompat.SourceDerived,
 		Labels: map[string]string{
 			"pgbouncer.database.alias": "database",
 		},
@@ -521,10 +494,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.user.connection.max",
-		Type:        "gauge",
-		Source:      promcompat.SourceDerived,
-		Disposition: "rename",
+		Metric: "pgbouncer.user.connection.max",
+		Type:   "gauge",
+		Source: promcompat.SourceDerived,
 		Series: []promcompat.Series{
 			{
 				Name: "pgbouncer_config_max_user_connections",
@@ -532,10 +504,9 @@ var CompatTable = []promcompat.Entry{
 		},
 	},
 	{
-		Metric:      "pgbouncer.user.count",
-		Type:        "gauge",
-		Source:      promcompat.SourceDerived,
-		Disposition: "rename",
+		Metric: "pgbouncer.user.count",
+		Type:   "gauge",
+		Source: promcompat.SourceDerived,
 		Series: []promcompat.Series{
 			{
 				Name: "pgbouncer_users",

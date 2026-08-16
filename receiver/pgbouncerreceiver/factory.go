@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
 
+	"go.olly.garden/grafts/internal/promcompat"
 	"go.olly.garden/grafts/receiver/pgbouncerreceiver/internal/telemetry"
 )
 
@@ -38,7 +39,7 @@ func createDefaultConfig() component.Config {
 		TLS:                "disable",
 		CollectionInterval: time.Minute,
 		Timeout:            10 * time.Second,
-		Emit:               []Shape{ShapeOTel},
+		Emit:               promcompat.Emit{promcompat.ShapeOTel},
 		Metrics:            telemetry.DefaultMetricsConfig(),
 	}
 }

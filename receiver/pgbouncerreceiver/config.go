@@ -8,19 +8,9 @@ import (
 
 	"go.opentelemetry.io/collector/config/configopaque"
 
+	"go.olly.garden/grafts/internal/promcompat"
+
 	"go.olly.garden/grafts/receiver/pgbouncerreceiver/internal/telemetry"
-)
-
-// Shape names an output shape the receiver can emit.
-type Shape string
-
-const (
-	// ShapeOTel is the semconv-aligned shape, and the default.
-	ShapeOTel Shape = "otel"
-	// ShapePrometheus additionally emits the series
-	// prometheus-community/pgbouncer_exporter produced, in their own
-	// instrumentation scope so one filter processor removes them.
-	ShapePrometheus Shape = "prometheus"
 )
 
 // Config configures the PgBouncer receiver.
@@ -44,8 +34,10 @@ type Config struct {
 	// Timeout bounds one scrape, across all commands.
 	Timeout time.Duration `mapstructure:"timeout"`
 
-	// Emit selects the output shapes. Defaults to OTel only.
-	Emit []Shape `mapstructure:"emit"`
+	// Emit selects the output shapes. Defaults to OTel only. Adding
+	// "prometheus" also emits the series pgbouncer_exporter produced, in their
+	// own instrumentation scope so one filter processor removes them.
+	Emit promcompat.Emit `mapstructure:"emit"`
 	// Metrics gates individual metrics.
 	Metrics telemetry.MetricsConfig `mapstructure:"metrics"`
 }
@@ -77,34 +69,9 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("timeout (%s) must be shorter than collection_interval (%s)", c.Timeout, c.CollectionInterval))
 	}
 
-	if len(c.Emit) == 0 {
-		errs = append(errs, errors.New("emit must name at least one of otel, prometheus"))
-	}
-	seen := make(map[Shape]bool, len(c.Emit))
-	for _, shape := range c.Emit {
-		switch shape {
-		case ShapeOTel, ShapePrometheus:
-		default:
-			errs = append(errs, fmt.Errorf("emit: unknown shape %q, want otel or prometheus", shape))
-			continue
-		}
-		if seen[shape] {
-			errs = append(errs, fmt.Errorf("emit: %q listed twice", shape))
-		}
-		seen[shape] = true
-	}
+	errs = append(errs, c.Emit.Validate())
 
 	return errors.Join(errs...)
-}
-
-// emits reports whether the receiver should produce the given shape.
-func (c *Config) emits(shape Shape) bool {
-	for _, s := range c.Emit {
-		if s == shape {
-			return true
-		}
-	}
-	return false
 }
 
 // connString builds the libpq connection string for the admin console.

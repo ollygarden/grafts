@@ -111,8 +111,20 @@ func (c *pgxClient) Query(ctx context.Context, cmd Command) ([]Row, error) {
 		}
 		row := make(Row, len(columns))
 		for i, column := range columns {
-			if i < len(values) && values[i] != nil {
-				row[column] = fmt.Sprint(values[i])
+			if i >= len(values) || values[i] == nil {
+				continue
+			}
+			// SHOW CLIENTS returns one row per connection -- thousands on a busy
+			// pooler -- times twenty columns, and the admin console answers
+			// almost entirely in strings. Taking those directly keeps the
+			// reflection-based fmt path off the hot loop.
+			switch v := values[i].(type) {
+			case string:
+				row[column] = v
+			case []byte:
+				row[column] = string(v)
+			default:
+				row[column] = fmt.Sprint(v)
 			}
 		}
 		out = append(out, row)

@@ -1,0 +1,38 @@
+# A trimmed capture from prometheus-community/pgbouncer_exporter v0.12.1.
+#
+# Kept here rather than borrowed from a component's testdata: this package is
+# shared, and its tests should not break when one component is renamed or
+# re-captures its fixture. The selection covers the shapes the parser has to
+# get right -- multi-label series, a counter keeping its _total suffix, an
+# unlabelled series, a six-label family, and the exporter's own runtime
+# metrics that a namespace-scoped diff must ignore.
+
+# HELP pgbouncer_pools_server_active_connections Server connections linked to a client connection, shown as connection
+# TYPE pgbouncer_pools_server_active_connections gauge
+pgbouncer_pools_server_active_connections{database="pgbouncer",user="pgbouncer"} 0
+pgbouncer_pools_server_active_connections{database="seconddb",user="testuser"} 3
+pgbouncer_pools_server_active_connections{database="testdb",user="testuser"} 6
+# HELP pgbouncer_stats_totals_queries_pooled_total Total number of SQL queries pooled
+# TYPE pgbouncer_stats_totals_queries_pooled_total counter
+pgbouncer_stats_totals_queries_pooled_total{database="pgbouncer"} 2
+pgbouncer_stats_totals_queries_pooled_total{database="seconddb"} 3
+pgbouncer_stats_totals_queries_pooled_total{database="testdb"} 6
+# HELP pgbouncer_databases_pool_size Maximum number of server connections
+# TYPE pgbouncer_databases_pool_size gauge
+pgbouncer_databases_pool_size{database="pgbouncer",force_user="pgbouncer",host="",name="pgbouncer",pool_mode="statement",port="6432"} 2
+pgbouncer_databases_pool_size{database="postgres",force_user="",host="postgres",name="seconddb",pool_mode="",port="5432"} 20
+pgbouncer_databases_pool_size{database="testdb",force_user="",host="postgres",name="testdb",pool_mode="",port="5432"} 20
+# HELP pgbouncer_pools Count of pools
+# TYPE pgbouncer_pools gauge
+pgbouncer_pools 3
+# HELP pgbouncer_version_info The pgbouncer version info
+# TYPE pgbouncer_version_info gauge
+pgbouncer_version_info{version="PgBouncer 1.25.2"} 1
+# HELP go_memstats_heap_objects Number of currently allocated objects. Equals to /gc/heap/objects:objects.
+# TYPE go_memstats_heap_objects gauge
+go_memstats_heap_objects 2785
+# HELP promhttp_metric_handler_requests_total Total number of scrapes by HTTP status code.
+# TYPE promhttp_metric_handler_requests_total counter
+promhttp_metric_handler_requests_total{code="200"} 1
+promhttp_metric_handler_requests_total{code="500"} 0
+promhttp_metric_handler_requests_total{code="503"} 0

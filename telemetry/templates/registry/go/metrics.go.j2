@@ -127,6 +127,10 @@ func (m *metric{{ go_name(metric.name) }}) emit(ms pmetric.MetricSlice) {
 	if !m.config.Enabled || m.data.{{ acc }}().DataPoints().Len() == 0 {
 		return
 	}
+	// One scrape is a good predictor of the next -- the datapoint count follows
+	// the target's pool and database count, which rarely moves -- so carry it
+	// over and let the next init presize instead of regrowing from empty.
+	m.capacity = m.data.{{ acc }}().DataPoints().Len()
 	m.data.MoveTo(ms.AppendEmpty())
 	m.init()
 }
@@ -137,7 +141,6 @@ func (m *metric{{ go_name(metric.name) }}) emit(ms pmetric.MetricSlice) {
 // It is not safe for concurrent use: a scraper owns one and drives it from a
 // single scrape.
 type MetricsBuilder struct {
-	config       MetricsConfig
 	startTime    pcommon.Timestamp
 	scopeName    string
 	scopeVersion string
@@ -151,7 +154,6 @@ type MetricsBuilder struct {
 // from a genuine drop.
 func NewMetricsBuilder(config MetricsConfig, startTime pcommon.Timestamp, scopeName, scopeVersion string) *MetricsBuilder {
 	mb := &MetricsBuilder{
-		config:       config,
 		startTime:    startTime,
 		scopeName:    scopeName,
 		scopeVersion: scopeVersion,

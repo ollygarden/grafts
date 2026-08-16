@@ -12,8 +12,10 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 
+	"go.olly.garden/grafts/internal/promcompat"
 	"go.olly.garden/grafts/receiver/pgbouncerreceiver/internal/telemetry"
 )
 
@@ -28,6 +30,7 @@ type pgbouncerReceiver struct {
 	consumer consumer.Metrics
 
 	scraper *scraper
+	obsrecv *receiverhelper.ObsReport
 	cancel  context.CancelFunc
 	done    chan struct{}
 	once    sync.Once
@@ -44,10 +47,32 @@ func newReceiver(cfg *Config, settings *receiver.Settings, next consumer.Metrics
 	}
 
 	version := settings.BuildInfo.Version
+
+	// Every other receiver in this repository reports accepted and refused
+	// datapoints; without this one, pgbouncer would be the only component whose
+	// consume boundary is invisible in otelcol_receiver_* metrics.
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
+		ReceiverID:             settings.ID,
+		Transport:              componentType,
+		ReceiverCreateSettings: *settings,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating obsreport: %w", err)
+	}
+
+	// Indexed once: the table is generated and never changes, so a malformed
+	// one is a startup error rather than something that surfaces as a scrape
+	// failure every collection interval.
+	compat, err := promcompat.NewTable(telemetry.CompatTable, scopeName, version)
+	if err != nil {
+		return nil, err
+	}
+
 	return &pgbouncerReceiver{
 		cfg:      cfg,
 		settings: settings,
 		consumer: next,
+		obsrecv:  obsrecv,
 		done:     make(chan struct{}),
 		connect: func(ctx context.Context, connString string) (client, error) {
 			return newClient(ctx, connString)
@@ -56,9 +81,10 @@ func newReceiver(cfg *Config, settings *receiver.Settings, next consumer.Metrics
 			cfg: cfg,
 			mb: telemetry.NewMetricsBuilder(
 				cfg.Metrics, pcommon.NewTimestampFromTime(time.Now()), scopeName, version),
-			self:         self,
-			scopeName:    scopeName,
-			scopeVersion: version,
+			self:   self,
+			compat: compat,
+			host:   host(cfg.Endpoint),
+			port:   port(cfg.Endpoint),
 		},
 	}, nil
 }
@@ -114,7 +140,10 @@ func (r *pgbouncerReceiver) collect(ctx context.Context) {
 	if md.DataPointCount() == 0 {
 		return
 	}
-	if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {
+	obsCtx := r.obsrecv.StartMetricsOp(ctx)
+	err = r.consumer.ConsumeMetrics(obsCtx, md)
+	r.obsrecv.EndMetricsOp(obsCtx, componentType, md.DataPointCount(), err)
+	if err != nil {
 		r.settings.Logger.Error("forwarding pgbouncer metrics failed", zap.Error(err))
 	}
 }

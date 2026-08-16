@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/receiver/receivertest"
+
+	"go.olly.garden/grafts/internal/promcompat"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -19,7 +21,7 @@ func TestDefaultConfig(t *testing.T) {
 
 	// Compatibility mode roughly doubles the series count, so it stays off
 	// until a user turns it on for a migration.
-	assert.Equal(t, []Shape{ShapeOTel}, cfg.Emit)
+	assert.Equal(t, promcompat.Emit{promcompat.ShapeOTel}, cfg.Emit)
 
 	// Defaults alone must not be valid: without credentials the receiver would
 	// start and silently report nothing.
@@ -73,12 +75,12 @@ func TestConfigValidate(t *testing.T) {
 		},
 		{
 			name:    "unknown shape",
-			mutate:  func(c *Config) { c.Emit = []Shape{"influx"} },
+			mutate:  func(c *Config) { c.Emit = promcompat.Emit{"influx"} },
 			wantErr: `unknown shape "influx"`,
 		},
 		{
 			name:    "duplicate shape",
-			mutate:  func(c *Config) { c.Emit = []Shape{ShapeOTel, ShapeOTel} },
+			mutate:  func(c *Config) { c.Emit = promcompat.Emit{promcompat.ShapeOTel, promcompat.ShapeOTel} },
 			wantErr: `"otel" listed twice`,
 		},
 		{

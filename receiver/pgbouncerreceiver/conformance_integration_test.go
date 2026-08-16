@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -27,21 +26,6 @@ import (
 	"go.olly.garden/grafts/internal/promcompat"
 )
 
-// Pinned by digest: a parity number measured against a moving image is not a
-// measurement. These are recorded in telemetry/component.yaml too.
-const (
-	postgresImage  = "postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73"
-	pgbouncerImage = "edoburu/pgbouncer:v1.25.2-p0@sha256:7d7a27d9e90985cab5cf42256f5c13a3120baa4b055b69df37beb272b89b2340"
-	exporterImage  = "quay.io/prometheuscommunity/pgbouncer-exporter:v0.12.1@sha256:30f31b6c2efdad3647f8182cc7c1a3a19e42bae5d17387694989f969371c230d"
-)
-
-// dropped are the upstream series component.yaml accounts for. They are
-// excluded from the parity denominator rather than counted against it, which is
-// what keeps the number honest.
-var dropped = map[string]string{
-	"pgbouncer_exporter_build_info": "describes the upstream exporter binary this component replaces",
-}
-
 // TestConformance is the measurement the pilot exists to produce: run the real
 // exporter and this receiver against the same PgBouncer, diff the two
 // Prometheus-shaped outputs, and write the result to parity-report.md.
@@ -49,28 +33,31 @@ func TestConformance(t *testing.T) {
 	ctx := t.Context()
 	requireDocker(ctx, t)
 
+	// Every parity fact -- the pinned images, the namespace, the declared
+	// drops, the floor -- comes from component.yaml. A harness that restated
+	// them could disagree with the file a reviewer reads.
+	meta, err := conformance.LoadComponent(filepath.Join("telemetry", "component.yaml"))
+	require.NoError(t, err)
+
 	net, err := network.New(ctx)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = net.Remove(context.Background()) })
 
-	startPostgres(ctx, t, net.Name)
-	pgbouncerHost, pgbouncerPort := startPgBouncer(ctx, t, net.Name)
-	exporterURL := startExporter(ctx, t, net.Name)
+	startPostgres(ctx, t, net.Name, meta.Fixture.Backend.Ref())
+	pgbouncerHost, pgbouncerPort := startPgBouncer(ctx, t, net.Name, meta.Fixture.Target.Ref())
+	exporterURL := startExporter(ctx, t, net.Name, meta.UpstreamRef())
 
 	// Drive traffic first: pools, clients and stats are all empty on an idle
 	// instance, and a diff of two empty scrapes proves nothing.
-	generateLoad(ctx, t, net.Name)
+	generateLoad(ctx, t, net.Name, meta.Fixture.Backend.Ref())
 
 	upstream := scrapeExporter(t, exporterURL)
 	ours := scrapeReceiver(ctx, t, fmt.Sprintf("%s:%s", pgbouncerHost, pgbouncerPort))
 
-	report := conformance.Diff(upstream, ours, conformance.Options{
-		Namespace: "pgbouncer_",
-		Dropped:   dropped,
-	})
+	report := conformance.Diff(upstream, ours, meta.Options())
 
 	path := filepath.Join(".", "parity-report.md")
-	require.NoError(t, os.WriteFile(path, []byte(report.Markdown("pgbouncerreceiver", "pgbouncer_exporter")), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(report.Markdown(meta.Component, filepath.Base(meta.Upstream.Repository))), 0o644))
 	t.Logf("parity %.1f%% -- %d matched, %d missing, %d shape-mismatch, %d extra; wrote %s",
 		report.Parity()*100, len(report.Matched), len(report.Missing), len(report.ShapeMismatch), len(report.Extra), path)
 
@@ -86,8 +73,8 @@ func TestConformance(t *testing.T) {
 	// produced a number, so this only guards against a total failure to emit.
 	assert.Positive(t, len(report.Matched), "the compat scope produced nothing to compare")
 
-	if floor := parityFloor(t); floor > 0 {
-		assert.GreaterOrEqual(t, report.Parity(), floor,
+	if meta.Parity.Floor > 0 {
+		assert.GreaterOrEqual(t, report.Parity(), meta.Parity.Floor,
 			"parity fell below the floor in telemetry/component.yaml")
 	}
 }
@@ -107,11 +94,11 @@ func requireDocker(ctx context.Context, t *testing.T) {
 	}
 }
 
-func startPostgres(ctx context.Context, t *testing.T, netName string) {
+func startPostgres(ctx context.Context, t *testing.T, netName, image string) {
 	t.Helper()
 
 	run(ctx, t, testcontainers.ContainerRequest{
-		Image:          postgresImage,
+		Image:          image,
 		Networks:       []string{netName},
 		NetworkAliases: map[string][]string{netName: {"postgres"}},
 		Env: map[string]string{
@@ -125,14 +112,14 @@ func startPostgres(ctx context.Context, t *testing.T, netName string) {
 	})
 }
 
-func startPgBouncer(ctx context.Context, t *testing.T, netName string) (string, string) {
+func startPgBouncer(ctx context.Context, t *testing.T, netName, image string) (string, string) {
 	t.Helper()
 
 	// Copied into the container rather than bind-mounted: a bind mount would
 	// need an SELinux relabel of the checkout, which a test has no business
 	// doing to a developer's working tree.
 	container := run(ctx, t, testcontainers.ContainerRequest{
-		Image:          pgbouncerImage,
+		Image:          image,
 		Networks:       []string{netName},
 		NetworkAliases: map[string][]string{netName: {"pgbouncer"}},
 		ExposedPorts:   []string{"6432/tcp"},
@@ -150,11 +137,11 @@ func startPgBouncer(ctx context.Context, t *testing.T, netName string) (string, 
 	return host, port.Port()
 }
 
-func startExporter(ctx context.Context, t *testing.T, netName string) string {
+func startExporter(ctx context.Context, t *testing.T, netName, image string) string {
 	t.Helper()
 
 	container := run(ctx, t, testcontainers.ContainerRequest{
-		Image:        exporterImage,
+		Image:        image,
 		Networks:     []string{netName},
 		ExposedPorts: []string{"9127/tcp"},
 		Cmd: []string{
@@ -172,12 +159,12 @@ func startExporter(ctx context.Context, t *testing.T, netName string) string {
 
 // generateLoad opens sessions through PgBouncer so pools, clients and stats are
 // populated on both scrapes.
-func generateLoad(ctx context.Context, t *testing.T, netName string) {
+func generateLoad(ctx context.Context, t *testing.T, netName, image string) {
 	t.Helper()
 
 	for i := 0; i < 4; i++ {
 		req := testcontainers.ContainerRequest{
-			Image:    postgresImage,
+			Image:    image,
 			Networks: []string{netName},
 			Env:      map[string]string{"PGPASSWORD": "testpass"},
 			Cmd: []string{
@@ -209,8 +196,11 @@ func scrapeExporter(t *testing.T, url string) map[string]conformance.Series {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	// Kept for debugging a diff: the committed capture is a different run.
-	require.NoError(t, os.WriteFile(filepath.Join("testdata", "parity", "upstream.latest.prom"), body, 0o644))
+	// Kept for debugging a failed diff, out of tree: rewriting a tracked file
+	// would leave the working tree dirty against CI's diff gate.
+	latest := filepath.Join(t.TempDir(), "upstream.latest.prom")
+	require.NoError(t, os.WriteFile(latest, body, 0o644))
+	t.Logf("upstream scrape written to %s", latest)
 
 	series, err := conformance.ParsePrometheus(bytes.NewReader(body))
 	require.NoError(t, err)
@@ -227,7 +217,7 @@ func scrapeReceiver(ctx context.Context, t *testing.T, endpoint string) map[stri
 	cfg.Password = "pgbouncer"
 	cfg.CollectionInterval = time.Second
 	cfg.Timeout = 500 * time.Millisecond
-	cfg.Emit = []Shape{ShapeOTel, ShapePrometheus}
+	cfg.Emit = promcompat.Emit{promcompat.ShapeOTel, promcompat.ShapePrometheus}
 	require.NoError(t, cfg.Validate())
 
 	sink := new(consumertest.MetricsSink)
@@ -241,29 +231,6 @@ func scrapeReceiver(ctx context.Context, t *testing.T, endpoint string) map[stri
 	require.Eventually(t, func() bool { return len(sink.AllMetrics()) > 0 }, 15*time.Second, 100*time.Millisecond)
 
 	return conformance.FromMetrics(sink.AllMetrics()[0], scopeName+promcompat.ScopeSuffix)
-}
-
-// parityFloor reads the enforced floor from component.yaml. It is null until
-// this test has produced a real number: the program's 90% default was a guess,
-// and the pilot exists to replace it with a measurement.
-func parityFloor(t *testing.T) float64 {
-	t.Helper()
-
-	raw, err := os.ReadFile(filepath.Join("telemetry", "component.yaml"))
-	require.NoError(t, err)
-
-	for _, line := range strings.Split(string(raw), "\n") {
-		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "floor:")
-		if !ok {
-			continue
-		}
-		var floor float64
-		if _, err := fmt.Sscanf(strings.TrimSpace(rest), "%f", &floor); err != nil {
-			return 0
-		}
-		return floor
-	}
-	return 0
 }
 
 func run(ctx context.Context, t *testing.T, req testcontainers.ContainerRequest) testcontainers.Container {

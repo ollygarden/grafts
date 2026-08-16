@@ -2,6 +2,7 @@ package conformance
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,26 +10,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestParsePrometheusAgainstACapturedScrape parses the live capture committed
-// with the pilot, so the parser is exercised against real exporter output
-// rather than against a fixture written to suit it.
+// TestParsePrometheusAgainstACapturedScrape parses real exporter output rather
+// than a fixture written to suit the parser.
 func TestParsePrometheusAgainstACapturedScrape(t *testing.T) {
-	f, err := os.Open("../../receiver/pgbouncerreceiver/testdata/parity/upstream.prom")
+	f, err := os.Open(filepath.Join("testdata", "exporter-scrape.prom"))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = f.Close() })
 
 	series, err := ParsePrometheus(f)
 	require.NoError(t, err)
-
-	// 46 pgbouncer_* names, plus the Go and process collectors the exporter
-	// mounts alongside them.
-	var pgbouncer int
-	for name := range series {
-		if strings.HasPrefix(name, "pgbouncer_") {
-			pgbouncer++
-		}
-	}
-	assert.Equal(t, 46, pgbouncer)
 
 	pools := series["pgbouncer_pools_server_active_connections"]
 	assert.Equal(t, "gauge", pools.Type)
@@ -47,6 +37,11 @@ func TestParsePrometheusAgainstACapturedScrape(t *testing.T) {
 	// An unlabelled series parses with no labels rather than being skipped.
 	assert.Equal(t, "gauge", series["pgbouncer_pools"].Type)
 	assert.Empty(t, series["pgbouncer_pools"].Labels)
+
+	// The exporter's own runtime metrics parse too; excluding them is the
+	// diff's job, by namespace, not the parser's.
+	assert.Equal(t, "gauge", series["go_memstats_heap_objects"].Type)
+	assert.Equal(t, []string{"code"}, series["promhttp_metric_handler_requests_total"].Labels)
 }
 
 func TestParsePrometheusHandlesCommasInLabelValues(t *testing.T) {

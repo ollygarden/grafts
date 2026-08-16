@@ -2,7 +2,7 @@
 
 # Parity: pgbouncerreceiver vs pgbouncer_exporter
 
-Measured by scraping both against the same PgBouncer, and diffing on
+Measured by scraping both against the same target, and diffing on
 series name, type and label-key set. Values are not compared: the two
 scrapes happen at different moments, so any counter would differ for
 reasons that say nothing about conformance.
@@ -74,5 +74,4 @@ parity.
 
 ## Dropped by decision (1)
 
-- pgbouncer_exporter_build_info: describes the upstream exporter binary this component replaces
-
+- pgbouncer_exporter_build_info: Describes the upstream exporter binary, which this component replaces. There is no corresponding fact for us to report.
