@@ -9,6 +9,7 @@ metrics:
     brief: "Declared under `db.*`, a namespace upstream owns and this registry did not import."
     annotations:
       prometheus:
-        source_metric: fixture_local_prefix
+        series:
+          - name: fixture_local_prefix
         disposition: map
         compat_source: derived

@@ -1,0 +1,136 @@
+# Shared by every grafts component. A component points nothing at this file --
+# telemetry/weaver.sh does -- so adding a receiver means writing registry YAML
+# and nothing else.
+#
+# `refinements.metrics` is the effective metric set: local declarations plus
+# upstream conventions with our refinements merged in. Both ours and the
+# dependency's entries carry a `provenance.path`, so the mount point is what
+# separates them -- filtering on the path merely being present pulls in the
+# unrefined upstream copy as well, and generates each refined metric twice.
+#
+# The component name is derived from the registry's own schema URL rather than
+# passed in, for the same reason: no per-component invocation. Telemetry about
+# the monitored system sits under the bare system prefix; the component's own
+# telemetry sits under the full component name.
+
+acronyms: ["DB", "DNS", "IO", "SQL", "URL", "ID", "OTLP", "TLS"]
+
+text_maps:
+  # Deliberately incomplete: an attribute type with no mapping must fail the
+  # build loudly rather than silently emit a broken signature.
+  go_types:
+    string: string
+    int: int64
+    double: float64
+    boolean: bool
+  # pcommon.Map's setter for each attribute type.
+  pdata_setters:
+    string: PutStr
+    int: PutInt
+    double: PutDouble
+    boolean: PutBool
+  # The metric value type declared in `annotations.code_generation`.
+  value_types:
+    int: int64
+    double: float64
+  value_setters:
+    int: SetIntValue
+    double: SetDoubleValue
+  # pdata's accessor per instrument. Histogram is deliberately absent: a
+  # scraped histogram would need bucket bounds the registry does not carry, so
+  # it must fail the build rather than be guessed at.
+  datapoint_accessor:
+    counter: Sum
+    updowncounter: Sum
+    gauge: Gauge
+  monotonic:
+    counter: "true"
+    updowncounter: "false"
+  # The Prometheus type each instrument becomes in the compatibility scope.
+  prom_types:
+    counter: counter
+    updowncounter: gauge
+    gauge: gauge
+    histogram: histogram
+  # The OTel metric API instrument each maps to, for self-telemetry.
+  otel_instrument:
+    counter: Counter
+    updowncounter: UpDownCounter
+    gauge: Gauge
+    histogram: Histogram
+  otel_method:
+    counter: Add
+    updowncounter: Add
+    gauge: Record
+    histogram: Record
+  otel_value_prefix:
+    int: Int64
+    double: Float64
+
+comment_formats:
+  go:
+    format: markdown
+    prefix: "// "
+
+params:
+  package_name: telemetry
+
+templates:
+  # Telemetry about the monitored system, built as pdata.
+  - template: metrics.go.j2
+    filter: >
+      (.schema_url | split("/") | .[-2]) as $component | {
+        schema_url: .schema_url,
+        component: $component,
+        metrics: [.refinements.metrics[]
+                  | select((.provenance.path // "") | startswith("/registry/"))
+                  | select((.name | startswith($component + ".")) | not)]
+                 | sort_by(.name)
+      }
+    application_mode: single
+    file_name: "metrics_gen.go"
+
+  # Telemetry about the component's own operation, on the OTel metric API.
+  - template: selftelemetry.go.j2
+    filter: >
+      (.schema_url | split("/") | .[-2]) as $component | {
+        schema_url: .schema_url,
+        component: $component,
+        metrics: [.refinements.metrics[]
+                  | select((.provenance.path // "") | startswith("/registry/"))
+                  | select(.name | startswith($component + "."))]
+                 | sort_by(.name)
+      }
+    application_mode: single
+    file_name: "selftelemetry_gen.go"
+
+  # The Prometheus compatibility table, consumed by internal/promcompat.
+  - template: promcompat.go.j2
+    filter: >
+      (.schema_url | split("/") | .[-2]) as $component | {
+        schema_url: .schema_url,
+        component: $component,
+        metrics: [.refinements.metrics[]
+                  | select((.provenance.path // "") | startswith("/registry/"))
+                  | select((.name | startswith($component + ".")) | not)
+                  | select(.annotations.prometheus != null)]
+                 | sort_by(.name)
+      }
+    application_mode: single
+    file_name: "promcompat_gen.go"
+
+  # The README migration table.
+  - template: docs.md.j2
+    filter: >
+      (.schema_url | split("/") | .[-2]) as $component |
+      ([.refinements.metrics[]
+        | select((.provenance.path // "") | startswith("/registry/"))
+        | select((.name | startswith($component + ".")) | not)]
+       | sort_by(.name)) as $metrics | {
+        schema_url: .schema_url,
+        component: $component,
+        metrics: $metrics,
+        label_map: ([$metrics[] | .annotations.prometheus.labels // {}] | add // {})
+      }
+    application_mode: single
+    file_name: "migration.md"

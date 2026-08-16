@@ -116,6 +116,9 @@ generate)
 		registry generate --v2 \
 		--registry /registry/ \
 		--templates /telemetry/templates/ \
+		--policy /telemetry/policies/ \
+		-D "package_name=${4:-telemetry}" \
+		-D "promcompat_package=go.olly.garden/grafts/internal/promcompat" \
 		go \
 		/out
 	# Jinja whitespace leaves blank lines that would fail CI's diff gate.

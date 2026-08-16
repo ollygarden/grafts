@@ -11,7 +11,8 @@ metrics:
     brief: "Claims `derived` while dropping a label the compat series needs."
     annotations:
       prometheus:
-        source_metric: fixture_derived_but_dropping
+        series:
+          - name: fixture_derived_but_dropping
         disposition: map
         compat_source: derived
         dropped_labels:

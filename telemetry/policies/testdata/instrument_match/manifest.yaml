@@ -1,4 +1,4 @@
-schema_url: https://olly.garden/schemas/grafts/fixture/0.1.0
+schema_url: https://olly.garden/schemas/grafts/fixturereceiver/0.1.0
 description: >
   Fixture proving `instrument_match` fires: an imported convention redeclared with the wrong instrument type.
 stability: development

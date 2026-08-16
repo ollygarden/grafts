@@ -53,17 +53,36 @@ metric_refinements:
       - ref: pgbouncer.user
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric:
-          - pgbouncer_pools_server_active_connections
-          - pgbouncer_pools_server_idle_connections
-          - pgbouncer_pools_server_used_connections
-          - pgbouncer_pools_server_testing_connections
-          - pgbouncer_pools_server_login_connections
-          - pgbouncer_pools_server_active_cancel_connections
-          - pgbouncer_pools_server_being_canceled_connections
         disposition: merge
         compat_source: derived
+        labels:
+          pgbouncer.database.alias: database
+          pgbouncer.user: user
+        series:
+          - name: pgbouncer_pools_server_active_connections
+            when:
+              db.client.connection.state: used
+          - name: pgbouncer_pools_server_idle_connections
+            when:
+              db.client.connection.state: idle
+          - name: pgbouncer_pools_server_used_connections
+            when:
+              db.client.connection.state: used_pending_check
+          - name: pgbouncer_pools_server_testing_connections
+            when:
+              db.client.connection.state: tested
+          - name: pgbouncer_pools_server_login_connections
+            when:
+              db.client.connection.state: login
+          - name: pgbouncer_pools_server_active_cancel_connections
+            when:
+              db.client.connection.state: active_cancel
+          - name: pgbouncer_pools_server_being_canceled_connections
+            when:
+              db.client.connection.state: being_canceled
 
   - id: metric.pgbouncer.server_pool.max
     ref: db.client.connection.max
@@ -79,10 +98,21 @@ metric_refinements:
       - ref: pgbouncer.database.alias
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_databases_pool_size
         disposition: map
-        compat_source: derived
+        compat_source: native
+        dropped_labels:
+          - force_user
+          - pool_mode
+        labels:
+          pgbouncer.database.alias: name
+          db.namespace: database
+          server.address: host
+          server.port: port
+        series:
+          - name: pgbouncer_databases_pool_size
 
   - id: metric.pgbouncer.server_pool.idle_min
     ref: db.client.connection.idle.min
@@ -101,6 +131,8 @@ metric_refinements:
       - ref: pgbouncer.database.alias
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
         disposition: extra
         compat_source: derived
@@ -129,10 +161,12 @@ metric_refinements:
       - ref: pgbouncer.user
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_pools_client_waiting_connections
         disposition: split
         compat_source: derived
+        emit_prometheus: false
 
 metrics:
   # ---- client side of the pooler: application -> PgBouncer ----------------
@@ -162,14 +196,27 @@ metrics:
       - ref: pgbouncer.user
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric:
-          - pgbouncer_pools_client_active_connections
-          - pgbouncer_pools_client_waiting_connections
-          - pgbouncer_pools_client_active_cancel_connections
-          - pgbouncer_pools_client_waiting_cancel_connections
         disposition: merge
         compat_source: derived
+        labels:
+          pgbouncer.database.alias: database
+          pgbouncer.user: user
+        series:
+          - name: pgbouncer_pools_client_active_connections
+            when:
+              pgbouncer.client.connection.state: active
+          - name: pgbouncer_pools_client_waiting_connections
+            when:
+              pgbouncer.client.connection.state: waiting
+          - name: pgbouncer_pools_client_active_cancel_connections
+            when:
+              pgbouncer.client.connection.state: active_cancel
+          - name: pgbouncer_pools_client_waiting_cancel_connections
+            when:
+              pgbouncer.client.connection.state: waiting_cancel
 
   - name: pgbouncer.client.connection.detail.count
     instrument: updowncounter
@@ -196,13 +243,22 @@ metrics:
         requirement_level: required
       - ref: pgbouncer.user
         requirement_level: required
+      - ref: pgbouncer.database.alias
+        requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_client_connections
         disposition: map
         compat_source: native
         dropped_labels:
           - application_name
+        labels:
+          pgbouncer.database.alias: database
+          pgbouncer.user: user
+          pgbouncer.client.state: state
+        series:
+          - name: pgbouncer_client_connections
 
   - name: pgbouncer.client.connection.max
     instrument: updowncounter
@@ -215,10 +271,13 @@ metrics:
       `db.client.connection.max`, which is the per-pool `pool_size` on the
       PostgreSQL side.
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_config_max_client_connections
         disposition: rename
         compat_source: derived
+        series:
+          - name: pgbouncer_config_max_client_connections
 
   - name: pgbouncer.user.connection.max
     instrument: updowncounter
@@ -228,10 +287,13 @@ metrics:
     brief: "Maximum server connections PgBouncer opens per login role."
     note: "PgBouncer's `max_user_connections`, from `SHOW CONFIG`."
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_config_max_user_connections
         disposition: rename
         compat_source: derived
+        series:
+          - name: pgbouncer_config_max_user_connections
 
   - name: pgbouncer.client.wait.time
     instrument: counter
@@ -250,10 +312,15 @@ metrics:
       - ref: pgbouncer.database.alias
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: double
       prometheus:
-        source_metric: pgbouncer_stats_totals_client_wait_seconds_total
         disposition: rename
         compat_source: derived
+        labels:
+          pgbouncer.database.alias: database
+        series:
+          - name: pgbouncer_stats_totals_client_wait_seconds_total
 
   - name: pgbouncer.client.wait.max
     instrument: gauge
@@ -272,12 +339,16 @@ metrics:
       - ref: pgbouncer.user
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: double
       prometheus:
-        source_metric: pgbouncer_pools_client_maxwait_seconds
         disposition: rename
         compat_source: derived
-
-  # ---- traffic pooled through PgBouncer, from SHOW STATS ------------------
+        labels:
+          pgbouncer.database.alias: database
+          pgbouncer.user: user
+        series:
+          - name: pgbouncer_pools_client_maxwait_seconds
 
   - name: pgbouncer.query.count
     instrument: counter
@@ -291,10 +362,15 @@ metrics:
       - ref: pgbouncer.database.alias
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_stats_totals_queries_pooled_total
         disposition: rename
         compat_source: derived
+        labels:
+          pgbouncer.database.alias: database
+        series:
+          - name: pgbouncer_stats_totals_queries_pooled_total
 
   - name: pgbouncer.query.time
     instrument: counter
@@ -314,10 +390,15 @@ metrics:
       - ref: pgbouncer.database.alias
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: double
       prometheus:
-        source_metric: pgbouncer_stats_totals_queries_duration_seconds_total
         disposition: rename
         compat_source: derived
+        labels:
+          pgbouncer.database.alias: database
+        series:
+          - name: pgbouncer_stats_totals_queries_duration_seconds_total
 
   - name: pgbouncer.transaction.count
     instrument: counter
@@ -331,10 +412,15 @@ metrics:
       - ref: pgbouncer.database.alias
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_stats_totals_sql_transactions_pooled_total
         disposition: rename
         compat_source: derived
+        labels:
+          pgbouncer.database.alias: database
+        series:
+          - name: pgbouncer_stats_totals_sql_transactions_pooled_total
 
   - name: pgbouncer.transaction.time
     instrument: counter
@@ -351,10 +437,15 @@ metrics:
       - ref: pgbouncer.database.alias
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: double
       prometheus:
-        source_metric: pgbouncer_stats_totals_server_in_transaction_seconds_total
         disposition: rename
         compat_source: derived
+        labels:
+          pgbouncer.database.alias: database
+        series:
+          - name: pgbouncer_stats_totals_server_in_transaction_seconds_total
 
   - name: pgbouncer.server.assignment.count
     instrument: counter
@@ -368,10 +459,15 @@ metrics:
       - ref: pgbouncer.database.alias
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_stats_totals_server_assignments_total
         disposition: rename
         compat_source: derived
+        labels:
+          pgbouncer.database.alias: database
+        series:
+          - name: pgbouncer_stats_totals_server_assignments_total
 
   - name: pgbouncer.network.io
     instrument: counter
@@ -390,12 +486,20 @@ metrics:
       - ref: pgbouncer.database.alias
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric:
-          - pgbouncer_stats_totals_received_bytes_total
-          - pgbouncer_stats_totals_sent_bytes_total
         disposition: merge
         compat_source: derived
+        labels:
+          pgbouncer.database.alias: database
+        series:
+          - name: pgbouncer_stats_totals_received_bytes_total
+            when:
+              network.io.direction: receive
+          - name: pgbouncer_stats_totals_sent_bytes_total
+            when:
+              network.io.direction: transmit
 
   - name: pgbouncer.prepared_statement.count
     instrument: counter
@@ -419,15 +523,25 @@ metrics:
       - ref: pgbouncer.database.alias
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric:
-          - pgbouncer_stats_totals_client_parses_total
-          - pgbouncer_stats_totals_server_parses_total
-          - pgbouncer_stats_totals_binds_total
         disposition: merge
         compat_source: derived
-
-  # ---- configured databases, from SHOW DATABASES -------------------------
+        labels:
+          pgbouncer.database.alias: database
+        series:
+          - name: pgbouncer_stats_totals_client_parses_total
+            when:
+              pgbouncer.prepared_statement.operation: parse
+              pgbouncer.peer: client
+          - name: pgbouncer_stats_totals_server_parses_total
+            when:
+              pgbouncer.prepared_statement.operation: parse
+              pgbouncer.peer: server
+          - name: pgbouncer_stats_totals_binds_total
+            when:
+              pgbouncer.prepared_statement.operation: bind
 
   - name: pgbouncer.database.connection.count
     instrument: updowncounter
@@ -445,10 +559,21 @@ metrics:
       - ref: pgbouncer.database.alias
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_databases_current_connections
         disposition: rename
-        compat_source: derived
+        compat_source: native
+        dropped_labels:
+          - force_user
+          - pool_mode
+        labels:
+          pgbouncer.database.alias: name
+          db.namespace: database
+          server.address: host
+          server.port: port
+        series:
+          - name: pgbouncer_databases_current_connections
 
   - name: pgbouncer.database.connection.max
     instrument: updowncounter
@@ -463,13 +588,28 @@ metrics:
     attributes:
       - ref: db.namespace
         requirement_level: required
+      - ref: server.address
+        requirement_level: recommended
+      - ref: server.port
+        requirement_level: recommended
       - ref: pgbouncer.database.alias
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_databases_max_connections
         disposition: rename
-        compat_source: derived
+        compat_source: native
+        dropped_labels:
+          - force_user
+          - pool_mode
+        labels:
+          pgbouncer.database.alias: name
+          db.namespace: database
+          server.address: host
+          server.port: port
+        series:
+          - name: pgbouncer_databases_max_connections
 
   - name: pgbouncer.database.reserve_pool.size
     instrument: updowncounter
@@ -480,13 +620,28 @@ metrics:
     attributes:
       - ref: db.namespace
         requirement_level: required
+      - ref: server.address
+        requirement_level: recommended
+      - ref: server.port
+        requirement_level: recommended
       - ref: pgbouncer.database.alias
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_databases_reserve_pool
         disposition: rename
-        compat_source: derived
+        compat_source: native
+        dropped_labels:
+          - force_user
+          - pool_mode
+        labels:
+          pgbouncer.database.alias: name
+          db.namespace: database
+          server.address: host
+          server.port: port
+        series:
+          - name: pgbouncer_databases_reserve_pool
 
   - name: pgbouncer.database.paused
     instrument: gauge
@@ -497,13 +652,28 @@ metrics:
     attributes:
       - ref: db.namespace
         requirement_level: required
+      - ref: server.address
+        requirement_level: recommended
+      - ref: server.port
+        requirement_level: recommended
       - ref: pgbouncer.database.alias
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_databases_paused
         disposition: map
-        compat_source: derived
+        compat_source: native
+        dropped_labels:
+          - force_user
+          - pool_mode
+        labels:
+          pgbouncer.database.alias: name
+          db.namespace: database
+          server.address: host
+          server.port: port
+        series:
+          - name: pgbouncer_databases_paused
 
   - name: pgbouncer.database.disabled
     instrument: gauge
@@ -514,15 +684,28 @@ metrics:
     attributes:
       - ref: db.namespace
         requirement_level: required
+      - ref: server.address
+        requirement_level: recommended
+      - ref: server.port
+        requirement_level: recommended
       - ref: pgbouncer.database.alias
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_databases_disabled
         disposition: map
-        compat_source: derived
-
-  # ---- process-wide accounting, from SHOW LISTS --------------------------
+        compat_source: native
+        dropped_labels:
+          - force_user
+          - pool_mode
+        labels:
+          pgbouncer.database.alias: name
+          db.namespace: database
+          server.address: host
+          server.port: port
+        series:
+          - name: pgbouncer_databases_disabled
 
   - name: pgbouncer.database.count
     instrument: updowncounter
@@ -531,10 +714,13 @@ metrics:
     stability: development
     brief: "Databases configured in PgBouncer."
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_databases
         disposition: rename
         compat_source: derived
+        series:
+          - name: pgbouncer_databases
 
   - name: pgbouncer.user.count
     instrument: updowncounter
@@ -543,10 +729,13 @@ metrics:
     stability: development
     brief: "Login roles known to PgBouncer."
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_users
         disposition: rename
         compat_source: derived
+        series:
+          - name: pgbouncer_users
 
   - name: pgbouncer.pool.count
     instrument: updowncounter
@@ -555,10 +744,13 @@ metrics:
     stability: development
     brief: "Active connection pools."
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_pools
         disposition: rename
         compat_source: derived
+        series:
+          - name: pgbouncer_pools
 
   - name: pgbouncer.client.count
     instrument: updowncounter
@@ -570,13 +762,21 @@ metrics:
       - ref: pgbouncer.client.state
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric:
-          - pgbouncer_free_clients
-          - pgbouncer_used_clients
-          - pgbouncer_login_clients
         disposition: merge
         compat_source: derived
+        series:
+          - name: pgbouncer_free_clients
+            when:
+              pgbouncer.client.state: free
+          - name: pgbouncer_used_clients
+            when:
+              pgbouncer.client.state: used
+          - name: pgbouncer_login_clients
+            when:
+              pgbouncer.client.state: login
 
   - name: pgbouncer.server.count
     instrument: updowncounter
@@ -588,12 +788,18 @@ metrics:
       - ref: pgbouncer.server.state
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric:
-          - pgbouncer_free_servers
-          - pgbouncer_used_servers
         disposition: merge
         compat_source: derived
+        series:
+          - name: pgbouncer_free_servers
+            when:
+              pgbouncer.server.state: free
+          - name: pgbouncer_used_servers
+            when:
+              pgbouncer.server.state: used
 
   - name: pgbouncer.dns.cache.count
     instrument: updowncounter
@@ -605,12 +811,18 @@ metrics:
       - ref: pgbouncer.dns.cache.type
         requirement_level: required
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric:
-          - pgbouncer_cached_dns_names
-          - pgbouncer_cached_dns_zones
         disposition: merge
         compat_source: derived
+        series:
+          - name: pgbouncer_cached_dns_names
+            when:
+              pgbouncer.dns.cache.type: name
+          - name: pgbouncer_cached_dns_zones
+            when:
+              pgbouncer.dns.cache.type: zone
 
   - name: pgbouncer.dns.query.count
     instrument: updowncounter
@@ -619,7 +831,10 @@ metrics:
     stability: development
     brief: "DNS queries PgBouncer has in flight."
     annotations:
+      code_generation:
+        metric_value_type: int
       prometheus:
-        source_metric: pgbouncer_in_flight_dns_queries
         disposition: rename
         compat_source: derived
+        series:
+          - name: pgbouncer_in_flight_dns_queries

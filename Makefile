@@ -1,4 +1,4 @@
-.PHONY: test lint fmt tidy build test-integration telemetry-check
+.PHONY: test lint fmt tidy build test-integration telemetry-check telemetry-generate
 
 # All component packages
 PACKAGES := ./receiver/... ./exporter/...
@@ -53,3 +53,15 @@ telemetry-check:
 	done
 	@echo "Proving the policies fire..."
 	@./telemetry/policies/run-fixtures.sh
+
+# Regenerate the telemetry each component's registry defines. The output is
+# committed and CI re-runs this to assert it is current, so a registry change
+# that was never generated fails the build rather than shipping.
+telemetry-generate:
+	@for r in receiver/*/telemetry/registry exporter/*/telemetry/registry; do \
+		[ -d "$$r" ] || continue; \
+		c="$$(dirname "$$(dirname "$$r")")"; \
+		echo "Generating $$c/internal/telemetry..."; \
+		./telemetry/weaver.sh generate "$$r" "$$c/internal/telemetry" || exit 1; \
+		mv "$$c/internal/telemetry/migration.md" "$$c/migration.md"; \
+	done

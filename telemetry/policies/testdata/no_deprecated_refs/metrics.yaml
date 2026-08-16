@@ -12,6 +12,7 @@ metrics:
         requirement_level: required
     annotations:
       prometheus:
-        source_metric: fixture_deprecated_ref
+        series:
+          - name: fixture_deprecated_ref
         disposition: map
         compat_source: derived

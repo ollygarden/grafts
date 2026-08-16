@@ -149,15 +149,27 @@ deny contains finding("instrument_match", msg, local.name) if {
 
 dispositions := {"map", "rename", "merge", "split", "resource", "drop", "extra"}
 
-deny contains finding("prom_annotation", msg, name) if {
+# Self-telemetry describes the receiver, not the monitored system, so it has no
+# upstream counterpart to be at parity with. It lives under the full component
+# name; the telemetry we scrape lives under the bare system name.
+is_self_telemetry(name) if {
+	startswith(name, concat("", [component, "."]))
+}
+
+scraped_metrics contains metric if {
 	metric := owned_metrics[_]
+	not is_self_telemetry(metric.name)
+}
+
+deny contains finding("prom_annotation", msg, name) if {
+	metric := scraped_metrics[_]
 	name := metric.name
 	not metric.annotations.prometheus
 	msg := sprintf("metric `%s` has no `annotations.prometheus` block, so it cannot appear in the parity report.", [name])
 }
 
 deny contains finding("prom_annotation", msg, name) if {
-	metric := owned_metrics[_]
+	metric := scraped_metrics[_]
 	name := metric.name
 	prom := metric.annotations.prometheus
 	not prom.compat_source
@@ -165,7 +177,7 @@ deny contains finding("prom_annotation", msg, name) if {
 }
 
 deny contains finding("prom_annotation", msg, name) if {
-	metric := owned_metrics[_]
+	metric := scraped_metrics[_]
 	name := metric.name
 	prom := metric.annotations.prometheus
 	not prom.compat_source in {"derived", "native"}
@@ -173,7 +185,7 @@ deny contains finding("prom_annotation", msg, name) if {
 }
 
 deny contains finding("prom_annotation", msg, name) if {
-	metric := owned_metrics[_]
+	metric := scraped_metrics[_]
 	name := metric.name
 	prom := metric.annotations.prometheus
 	not prom.disposition in dispositions
@@ -183,7 +195,7 @@ deny contains finding("prom_annotation", msg, name) if {
 # A `derived` entry promises the compat series is a pure function of the OTel
 # output. Dropping a label destroys the information that promise depends on.
 deny contains finding("prom_annotation", msg, name) if {
-	metric := owned_metrics[_]
+	metric := scraped_metrics[_]
 	name := metric.name
 	prom := metric.annotations.prometheus
 	prom.compat_source == "derived"
@@ -194,15 +206,40 @@ deny contains finding("prom_annotation", msg, name) if {
 	)
 }
 
-# Anything still emitted in the compat scope needs a source to be diffed
-# against. `extra` is the exception: it is surface upstream does not have.
+# Anything emitted into the compat scope needs a source to be diffed against.
+# `emit_prometheus: false` is the opt-out, for surface upstream does not have
+# and for the losing half of a `split`, whose compat series another entry owns.
 deny contains finding("prom_annotation", msg, name) if {
-	metric := owned_metrics[_]
+	metric := scraped_metrics[_]
 	name := metric.name
 	prom := metric.annotations.prometheus
-	prom.disposition != "extra"
-	not prom.source_metric
-	msg := sprintf("metric `%s` has no `source_metric`, so the conformance diff has nothing to match it against.", [name])
+	not prom.emit_prometheus == false
+	count(prom.series) == 0
+	msg := sprintf("metric `%s` emits into the compat scope but names no `series`, so the conformance diff has nothing to match it against.", [name])
+}
+
+# `labels` and `series[].when` name attributes by key. A typo there produces a
+# compat series silently missing a label, which the conformance diff reports as
+# a shape-mismatch a long way from its cause.
+deny contains finding("prom_annotation", msg, name) if {
+	metric := scraped_metrics[_]
+	name := metric.name
+	key := object.keys(metric.annotations.prometheus.labels)[_]
+	not metric_has_attribute(metric, key)
+	msg := sprintf("metric `%s` maps label `%s`, which is not one of its attributes.", [name, key])
+}
+
+deny contains finding("prom_annotation", msg, name) if {
+	metric := scraped_metrics[_]
+	name := metric.name
+	series := metric.annotations.prometheus.series[_]
+	key := object.keys(series.when)[_]
+	not metric_has_attribute(metric, key)
+	msg := sprintf("metric `%s` selects compat series `%s` on `%s`, which is not one of its attributes.", [name, series.name, key])
+}
+
+metric_has_attribute(metric, key) if {
+	metric.attributes[_].key == key
 }
 
 # ---- helpers -------------------------------------------------------------
