@@ -1,0 +1,184 @@
+file_format: definition/2
+
+# Local attributes only. Everything upstream OpenTelemetry names is referenced,
+# never redeclared -- see ../../../../telemetry/README.md. Each key below states
+# why upstream does not cover it; "no convention covers this" and "nobody
+# checked" are indistinguishable six months later without the reason.
+
+attributes:
+  - key: pgbouncer.user
+    type: string
+    stability: development
+    brief: "The PgBouncer login role a pool or client connection belongs to."
+    note: >
+      Upstream `db.user` is deprecated as obsoleted -- "Removed, no replacement
+      at this time" -- so there is no convention for the connecting role. A
+      PgBouncer pool is identified by (database, user), so dropping the role
+      would collapse distinct pools into one series.
+
+      Bounded by the login roles configured in `auth_file`, not by traffic.
+    examples: ['app', 'readonly']
+
+  - key: pgbouncer.database.alias
+    type: string
+    stability: development
+    brief: "The name clients connect to, from PgBouncer's `[databases]` section."
+    note: >
+      PgBouncer routes an alias to a backend database that may be named
+      differently, on a different host. `db.namespace`, `server.address` and
+      `server.port` carry the backend; this carries the alias clients actually
+      use, which is the only key `SHOW POOLS` and `SHOW STATS` report on and the
+      label the upstream exporter emits as `database`.
+    examples: ['app_rw', 'app_ro']
+
+  - key: pgbouncer.client.connection.state
+    type:
+      members:
+        - id: active
+          value: "active"
+          stability: development
+          brief: "Linked to a server connection and able to process queries."
+        - id: waiting
+          value: "waiting"
+          stability: development
+          brief: "Waiting for a server connection to become available."
+        - id: active_cancel
+          value: "active_cancel"
+          stability: development
+          brief: "Has forwarded a query cancellation and awaits the server response."
+        - id: waiting_cancel
+          value: "waiting_cancel"
+          stability: development
+          brief: "Has not forwarded its query cancellation yet."
+    stability: development
+    brief: "State of a client connection held by PgBouncer, from `SHOW POOLS`."
+    note: >
+      Upstream `db.client.connection.state` describes the pool a client holds to
+      a database. These are the connections PgBouncer holds *as a server*, which
+      no released convention models -- see the two-sided-pool note on
+      `pgbouncer.client.connection.count`.
+    examples: ['waiting']
+
+  - key: pgbouncer.client.state
+    type:
+      members:
+        - id: free
+          value: "free"
+          stability: development
+          brief: "Allocated but unused client slot."
+        - id: used
+          value: "used"
+          stability: development
+          brief: "Client slot in use."
+        - id: login
+          value: "login"
+          stability: development
+          brief: "Client currently logging in."
+        - id: active
+          value: "active"
+          stability: development
+          brief: "Client currently issuing queries."
+        - id: waiting
+          value: "waiting"
+          stability: development
+          brief: "Client waiting on a server connection."
+        - id: idle
+          value: "idle"
+          stability: development
+          brief: "Connected client issuing no queries."
+    stability: development
+    brief: "State of a PgBouncer client slot or connection."
+    note: >
+      Two PgBouncer sources report client state at different grains and this key
+      spans both: `SHOW LISTS` reports process-wide slot accounting (`free`,
+      `used`, `login`) on `pgbouncer.client.count`, and `SHOW CLIENTS` reports
+      per-connection state (`active`, `waiting`, `idle`, `used`, `login`) on
+      `pgbouncer.client.connection.detail.count`. The metric name distinguishes
+      them; the value sets overlap only on `used` and `login`.
+    examples: ['idle']
+
+  - key: pgbouncer.server.state
+    type:
+      members:
+        - id: free
+          value: "free"
+          stability: development
+          brief: "Allocated but unused server slot."
+        - id: used
+          value: "used"
+          stability: development
+          brief: "Server slot in use."
+    stability: development
+    brief: "State of a PgBouncer server slot, from `SHOW LISTS`."
+    note: >
+      Process-wide slot accounting, not per-pool connection state. The per-pool
+      view is `db.client.connection.count`, which uses upstream
+      `db.client.connection.state`.
+    examples: ['free']
+
+  - key: pgbouncer.dns.cache.type
+    type:
+      members:
+        - id: name
+          value: "name"
+          stability: development
+          brief: "A cached DNS name."
+        - id: zone
+          value: "zone"
+          stability: development
+          brief: "A cached DNS zone."
+    stability: development
+    brief: "What kind of entry a PgBouncer DNS cache count refers to."
+    note: >
+      The `dns.*` conventions describe individual lookups made by an
+      instrumented client, not the state of a resolver cache held by a proxy.
+      No released convention covers cache occupancy.
+    examples: ['name']
+
+  - key: pgbouncer.prepared_statement.operation
+    type:
+      members:
+        - id: parse
+          value: "parse"
+          stability: development
+          brief: "A Parse message, readying a prepared statement."
+        - id: bind
+          value: "bind"
+          stability: development
+          brief: "A Bind message, readying a statement for execution."
+    stability: development
+    brief: "The extended-query-protocol message a prepared-statement count refers to."
+    note: >
+      `db.operation.name` names the database operation a span represents, not a
+      wire-protocol message type counted in aggregate by a pooler.
+    examples: ['parse']
+
+  - key: pgbouncer.peer
+    type:
+      members:
+        - id: client
+          value: "client"
+          stability: development
+          brief: "Between the application and PgBouncer."
+        - id: server
+          value: "server"
+          stability: development
+          brief: "Between PgBouncer and PostgreSQL."
+    stability: development
+    brief: "Which side of the pooler a measurement was taken on."
+    note: >
+      PgBouncer sits between two connections and counts the same protocol
+      message on both sides. Nothing upstream distinguishes the two halves of a
+      proxied connection for metrics; `network.io.direction` describes traffic
+      direction, not which peer.
+    examples: ['client']
+
+  - key: pgbouncer.version
+    type: string
+    stability: development
+    brief: "The PgBouncer version string, from `SHOW VERSION`."
+    note: >
+      A resource attribute describing the monitored process. `service.version`
+      describes the emitting service, which here is the Collector, not
+      PgBouncer.
+    examples: ['PgBouncer 1.25.2']

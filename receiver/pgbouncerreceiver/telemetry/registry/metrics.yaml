@@ -1,0 +1,625 @@
+file_format: definition/2
+
+# Scraped telemetry: what the receiver reports about the monitored PgBouncer.
+# Self-telemetry is in selftelemetry.yaml.
+#
+# Every entry carries an `annotations.prometheus` block mapping it back to
+# `prometheus-community/pgbouncer_exporter`, captured live in
+# ../../testdata/parity/upstream.prom. That block is the parity spec:
+#
+#   source_metric  the upstream series (or a list, for a merge)
+#   disposition    map | rename | merge | split | resource | drop | extra
+#   compat_source  derived  -- reconstructable from the OTel output
+#                  native   -- the scraper must populate the compat scope itself
+#
+# The server side of the pooler (PgBouncer -> PostgreSQL) is a client-held
+# connection pool, so it takes upstream `db.client.connection.*`. The client
+# side (application -> PgBouncer) is PgBouncer acting as a server, which no
+# released convention models, so it takes `pgbouncer.client.connection.*`.
+# Collapsing the two would make pool saturation and client queueing
+# indistinguishable, which is the whole reason to monitor a pooler.
+
+imports:
+  metrics:
+    - db.client.connection.count
+    - db.client.connection.max
+    - db.client.connection.idle.min
+    - db.client.connection.pending_requests
+
+metric_refinements:
+  - id: metric.pgbouncer.server_pool.count
+    ref: db.client.connection.count
+    brief: "Connections PgBouncer holds to PostgreSQL, by state."
+    note: >
+      One datapoint per (pool, state). PgBouncer reports seven server states and
+      `db.client.connection.state` defines two, so five carry local values:
+      `used_pending_check`, `tested`, `login`, `active_cancel`,
+      `being_canceled`.
+
+      `sv_used` is deliberately *not* reported as `used`. PgBouncer's `sv_used`
+      means idle for longer than `server_check_delay` and needing a check query
+      before reuse -- an idle connection. Upstream `used` means in use, which is
+      `sv_active`. Aliasing the two by name would double-count against
+      `sv_active` and invert the metric people alert on.
+    attributes:
+      - ref: db.namespace
+        requirement_level: required
+      - ref: server.address
+        requirement_level: recommended
+      - ref: server.port
+        requirement_level: recommended
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+      - ref: pgbouncer.user
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric:
+          - pgbouncer_pools_server_active_connections
+          - pgbouncer_pools_server_idle_connections
+          - pgbouncer_pools_server_used_connections
+          - pgbouncer_pools_server_testing_connections
+          - pgbouncer_pools_server_login_connections
+          - pgbouncer_pools_server_active_cancel_connections
+          - pgbouncer_pools_server_being_canceled_connections
+        disposition: merge
+        compat_source: derived
+
+  - id: metric.pgbouncer.server_pool.max
+    ref: db.client.connection.max
+    brief: "Maximum server connections PgBouncer will open for a pool."
+    note: "PgBouncer's `pool_size`, from `SHOW DATABASES`."
+    attributes:
+      - ref: db.namespace
+        requirement_level: required
+      - ref: server.address
+        requirement_level: recommended
+      - ref: server.port
+        requirement_level: recommended
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_databases_pool_size
+        disposition: map
+        compat_source: derived
+
+  - id: metric.pgbouncer.server_pool.idle_min
+    ref: db.client.connection.idle.min
+    brief: "Server connections PgBouncer keeps open when idle."
+    note: >
+      PgBouncer's `min_pool_size`, from `SHOW DATABASES`. The upstream exporter
+      does not emit it; it is surface we add, so it has no Prometheus source and
+      is excluded from the compat scope.
+    attributes:
+      - ref: db.namespace
+        requirement_level: required
+      - ref: server.address
+        requirement_level: recommended
+      - ref: server.port
+        requirement_level: recommended
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+    annotations:
+      prometheus:
+        disposition: extra
+        compat_source: derived
+        emit_prometheus: false
+
+  - id: metric.pgbouncer.server_pool.pending
+    ref: db.client.connection.pending_requests
+    brief: "Clients queued waiting for a server connection."
+    note: >
+      PgBouncer's `cl_waiting`, from `SHOW POOLS`. Reported here because it is
+      exactly the convention's "current pending requests for an open
+      connection" against the server pool, and again as
+      `pgbouncer.client.connection.count{state=waiting}` because it is also a
+      client-side state. The same number under two names is deliberate: the
+      first is the semconv-native view of pool saturation, the second completes
+      the client-side state breakdown.
+    attributes:
+      - ref: db.namespace
+        requirement_level: required
+      - ref: server.address
+        requirement_level: recommended
+      - ref: server.port
+        requirement_level: recommended
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+      - ref: pgbouncer.user
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_pools_client_waiting_connections
+        disposition: split
+        compat_source: derived
+
+metrics:
+  # ---- client side of the pooler: application -> PgBouncer ----------------
+
+  - name: pgbouncer.client.connection.count
+    instrument: updowncounter
+    unit: "{connection}"
+    requirement_level: recommended
+    stability: development
+    brief: "Client connections held by PgBouncer, by state."
+    note: >
+      The application-facing half of the pooler, which upstream
+      `db.client.connection.*` does not model -- that convention describes a
+      pool a client holds *to* a database, which here is the PostgreSQL side.
+      Candidate semconv contribution once a second proxy provides evidence.
+    attributes:
+      - ref: pgbouncer.client.connection.state
+        requirement_level: required
+      - ref: db.namespace
+        requirement_level: required
+      - ref: server.address
+        requirement_level: recommended
+      - ref: server.port
+        requirement_level: recommended
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+      - ref: pgbouncer.user
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric:
+          - pgbouncer_pools_client_active_connections
+          - pgbouncer_pools_client_waiting_connections
+          - pgbouncer_pools_client_active_cancel_connections
+          - pgbouncer_pools_client_waiting_cancel_connections
+        disposition: merge
+        compat_source: derived
+
+  - name: pgbouncer.client.connection.detail.count
+    instrument: updowncounter
+    unit: "{connection}"
+    requirement_level: recommended
+    stability: development
+    brief: "Client connections aggregated by database, role and connection state."
+    note: >
+      From `SHOW CLIENTS`, at a finer grain than `SHOW POOLS`.
+
+      The upstream exporter also dimensions this by `application_name`, which is
+      set by the connecting client and is therefore unbounded by construction --
+      it is the label that turns a three-series metric into an N-series one.
+      It is dropped here and the count aggregated over the remaining keys.
+
+      The compat scope keeps `application_name`, because a user cutting over
+      must see their existing series unchanged. That series cannot be
+      reconstructed from this metric, which is why this entry is the one
+      `compat_source: native` in the component.
+    attributes:
+      - ref: pgbouncer.client.state
+        requirement_level: required
+      - ref: db.namespace
+        requirement_level: required
+      - ref: pgbouncer.user
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_client_connections
+        disposition: map
+        compat_source: native
+        dropped_labels:
+          - application_name
+
+  - name: pgbouncer.client.connection.max
+    instrument: updowncounter
+    unit: "{connection}"
+    requirement_level: recommended
+    stability: development
+    brief: "Maximum client connections PgBouncer accepts process-wide."
+    note: >
+      PgBouncer's `max_client_conn`, from `SHOW CONFIG`. Distinct from
+      `db.client.connection.max`, which is the per-pool `pool_size` on the
+      PostgreSQL side.
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_config_max_client_connections
+        disposition: rename
+        compat_source: derived
+
+  - name: pgbouncer.user.connection.max
+    instrument: updowncounter
+    unit: "{connection}"
+    requirement_level: recommended
+    stability: development
+    brief: "Maximum server connections PgBouncer opens per login role."
+    note: "PgBouncer's `max_user_connections`, from `SHOW CONFIG`."
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_config_max_user_connections
+        disposition: rename
+        compat_source: derived
+
+  - name: pgbouncer.client.wait.time
+    instrument: counter
+    unit: "s"
+    requirement_level: recommended
+    stability: development
+    brief: "Time clients have spent waiting for a server connection."
+    note: >
+      Upstream `db.client.connection.wait_time` is semantically exact but is a
+      **histogram**, and PgBouncer exposes only `total_wait_time`, a cumulative
+      counter. A histogram with invented bounds passes review because the name
+      looks right, so this is reported as a sum under a local name instead.
+    attributes:
+      - ref: db.namespace
+        requirement_level: required
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_stats_totals_client_wait_seconds_total
+        disposition: rename
+        compat_source: derived
+
+  - name: pgbouncer.client.wait.max
+    instrument: gauge
+    unit: "s"
+    requirement_level: recommended
+    stability: development
+    brief: "Age of the oldest client connection still waiting for a server connection."
+    note: >
+      PgBouncer's `maxwait`/`maxwait_us`, from `SHOW POOLS`. A non-zero value is
+      the direct signal that a pool is saturated.
+    attributes:
+      - ref: db.namespace
+        requirement_level: required
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+      - ref: pgbouncer.user
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_pools_client_maxwait_seconds
+        disposition: rename
+        compat_source: derived
+
+  # ---- traffic pooled through PgBouncer, from SHOW STATS ------------------
+
+  - name: pgbouncer.query.count
+    instrument: counter
+    unit: "{query}"
+    requirement_level: recommended
+    stability: development
+    brief: "SQL queries pooled by PgBouncer."
+    attributes:
+      - ref: db.namespace
+        requirement_level: required
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_stats_totals_queries_pooled_total
+        disposition: rename
+        compat_source: derived
+
+  - name: pgbouncer.query.time
+    instrument: counter
+    unit: "s"
+    requirement_level: recommended
+    stability: development
+    brief: "Time PgBouncer spent executing queries against PostgreSQL."
+    note: >
+      Upstream `db.client.operation.duration` is stable and is exactly this
+      measurement, but it is a **histogram** and PgBouncer exposes only
+      `total_query_time`, a cumulative counter. Reporting a single-bucket
+      histogram under the released name would be a lie that passes review
+      because the name looks right.
+    attributes:
+      - ref: db.namespace
+        requirement_level: required
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_stats_totals_queries_duration_seconds_total
+        disposition: rename
+        compat_source: derived
+
+  - name: pgbouncer.transaction.count
+    instrument: counter
+    unit: "{transaction}"
+    requirement_level: recommended
+    stability: development
+    brief: "SQL transactions pooled by PgBouncer."
+    attributes:
+      - ref: db.namespace
+        requirement_level: required
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_stats_totals_sql_transactions_pooled_total
+        disposition: rename
+        compat_source: derived
+
+  - name: pgbouncer.transaction.time
+    instrument: counter
+    unit: "s"
+    requirement_level: recommended
+    stability: development
+    brief: "Time PgBouncer server connections spent inside a transaction."
+    note: >
+      Includes time idle in transaction, so it exceeds `pgbouncer.query.time`.
+      The gap between the two is the classic idle-in-transaction signal.
+    attributes:
+      - ref: db.namespace
+        requirement_level: required
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_stats_totals_server_in_transaction_seconds_total
+        disposition: rename
+        compat_source: derived
+
+  - name: pgbouncer.server.assignment.count
+    instrument: counter
+    unit: "{assignment}"
+    requirement_level: recommended
+    stability: development
+    brief: "Client connections assigned a server connection since process start."
+    attributes:
+      - ref: db.namespace
+        requirement_level: required
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_stats_totals_server_assignments_total
+        disposition: rename
+        compat_source: derived
+
+  - name: pgbouncer.network.io
+    instrument: counter
+    unit: "By"
+    requirement_level: recommended
+    stability: development
+    brief: "Network traffic PgBouncer has proxied."
+    note: >
+      `network.io.direction` is `release_candidate`, not stable -- recorded in
+      the component stability block.
+    attributes:
+      - ref: network.io.direction
+        requirement_level: required
+      - ref: db.namespace
+        requirement_level: required
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric:
+          - pgbouncer_stats_totals_received_bytes_total
+          - pgbouncer_stats_totals_sent_bytes_total
+        disposition: merge
+        compat_source: derived
+
+  - name: pgbouncer.prepared_statement.count
+    instrument: counter
+    unit: "{message}"
+    requirement_level: recommended
+    stability: development
+    brief: "Extended-query-protocol messages PgBouncer handled for prepared statements."
+    note: >
+      `pgbouncer.peer` separates the Parse messages PgBouncer received from
+      clients from those it forwarded to PostgreSQL; the gap between them is
+      what prepared-statement pooling saves. Bind messages are counted once and
+      carry no peer.
+    attributes:
+      - ref: pgbouncer.prepared_statement.operation
+        requirement_level: required
+      - ref: pgbouncer.peer
+        requirement_level:
+          conditionally_required: "when the operation is `parse`"
+      - ref: db.namespace
+        requirement_level: required
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric:
+          - pgbouncer_stats_totals_client_parses_total
+          - pgbouncer_stats_totals_server_parses_total
+          - pgbouncer_stats_totals_binds_total
+        disposition: merge
+        compat_source: derived
+
+  # ---- configured databases, from SHOW DATABASES -------------------------
+
+  - name: pgbouncer.database.connection.count
+    instrument: updowncounter
+    unit: "{connection}"
+    requirement_level: recommended
+    stability: development
+    brief: "Server connections currently open for a configured database."
+    attributes:
+      - ref: db.namespace
+        requirement_level: required
+      - ref: server.address
+        requirement_level: recommended
+      - ref: server.port
+        requirement_level: recommended
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_databases_current_connections
+        disposition: rename
+        compat_source: derived
+
+  - name: pgbouncer.database.connection.max
+    instrument: updowncounter
+    unit: "{connection}"
+    requirement_level: recommended
+    stability: development
+    brief: "Maximum server connections allowed for a configured database."
+    note: >
+      PgBouncer's `max_db_connections`, a ceiling across all pools for the
+      database. Distinct from `db.client.connection.max`, which is one pool's
+      `pool_size`.
+    attributes:
+      - ref: db.namespace
+        requirement_level: required
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_databases_max_connections
+        disposition: rename
+        compat_source: derived
+
+  - name: pgbouncer.database.reserve_pool.size
+    instrument: updowncounter
+    unit: "{connection}"
+    requirement_level: recommended
+    stability: development
+    brief: "Additional server connections allowed once a pool is saturated."
+    attributes:
+      - ref: db.namespace
+        requirement_level: required
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_databases_reserve_pool
+        disposition: rename
+        compat_source: derived
+
+  - name: pgbouncer.database.paused
+    instrument: gauge
+    unit: "1"
+    requirement_level: recommended
+    stability: development
+    brief: "1 while a configured database is paused, else 0."
+    attributes:
+      - ref: db.namespace
+        requirement_level: required
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_databases_paused
+        disposition: map
+        compat_source: derived
+
+  - name: pgbouncer.database.disabled
+    instrument: gauge
+    unit: "1"
+    requirement_level: recommended
+    stability: development
+    brief: "1 while a configured database is disabled, else 0."
+    attributes:
+      - ref: db.namespace
+        requirement_level: required
+      - ref: pgbouncer.database.alias
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_databases_disabled
+        disposition: map
+        compat_source: derived
+
+  # ---- process-wide accounting, from SHOW LISTS --------------------------
+
+  - name: pgbouncer.database.count
+    instrument: updowncounter
+    unit: "{database}"
+    requirement_level: recommended
+    stability: development
+    brief: "Databases configured in PgBouncer."
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_databases
+        disposition: rename
+        compat_source: derived
+
+  - name: pgbouncer.user.count
+    instrument: updowncounter
+    unit: "{user}"
+    requirement_level: recommended
+    stability: development
+    brief: "Login roles known to PgBouncer."
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_users
+        disposition: rename
+        compat_source: derived
+
+  - name: pgbouncer.pool.count
+    instrument: updowncounter
+    unit: "{pool}"
+    requirement_level: recommended
+    stability: development
+    brief: "Active connection pools."
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_pools
+        disposition: rename
+        compat_source: derived
+
+  - name: pgbouncer.client.count
+    instrument: updowncounter
+    unit: "{client}"
+    requirement_level: recommended
+    stability: development
+    brief: "Client slots, by state."
+    attributes:
+      - ref: pgbouncer.client.state
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric:
+          - pgbouncer_free_clients
+          - pgbouncer_used_clients
+          - pgbouncer_login_clients
+        disposition: merge
+        compat_source: derived
+
+  - name: pgbouncer.server.count
+    instrument: updowncounter
+    unit: "{server}"
+    requirement_level: recommended
+    stability: development
+    brief: "Server slots, by state."
+    attributes:
+      - ref: pgbouncer.server.state
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric:
+          - pgbouncer_free_servers
+          - pgbouncer_used_servers
+        disposition: merge
+        compat_source: derived
+
+  - name: pgbouncer.dns.cache.count
+    instrument: updowncounter
+    unit: "{entry}"
+    requirement_level: recommended
+    stability: development
+    brief: "Entries in PgBouncer's DNS cache."
+    attributes:
+      - ref: pgbouncer.dns.cache.type
+        requirement_level: required
+    annotations:
+      prometheus:
+        source_metric:
+          - pgbouncer_cached_dns_names
+          - pgbouncer_cached_dns_zones
+        disposition: merge
+        compat_source: derived
+
+  - name: pgbouncer.dns.query.count
+    instrument: updowncounter
+    unit: "{query}"
+    requirement_level: recommended
+    stability: development
+    brief: "DNS queries PgBouncer has in flight."
+    annotations:
+      prometheus:
+        source_metric: pgbouncer_in_flight_dns_queries
+        disposition: rename
+        compat_source: derived

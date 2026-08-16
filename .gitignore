@@ -5,3 +5,6 @@ vendor
 
 # Distribution build artifacts
 distributions/*/build/
+
+# Weaver's pinned upstream semconv model, fetched by telemetry/weaver.sh
+telemetry/.semconv/

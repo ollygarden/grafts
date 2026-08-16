@@ -1,0 +1,111 @@
+# Program metadata for pgbouncerreceiver. It sits beside registry/ rather than
+# inside it because Weaver's `definition/2` rejects unknown top-level keys, and
+# relying on an unvalidated escape hatch inside a schema-checked file invites a
+# future release to break the build.
+#
+# The registry defines the conventions; this file carries the facts about the
+# conversion: what we replace, how complete we are, and what we knowingly left
+# behind.
+
+component: pgbouncerreceiver
+system: pgbouncer
+
+upstream:
+  repository: https://github.com/prometheus-community/pgbouncer_exporter
+  version: v0.12.1
+  image: quay.io/prometheuscommunity/pgbouncer-exporter
+  digest: sha256:30f31b6c2efdad3647f8182cc7c1a3a19e42bae5d17387694989f969371c230d
+  # Captured live from the fixture under load, not read out of the source --
+  # a source-read misses conditionally emitted metrics.
+  scrape: testdata/parity/upstream.prom
+  metrics_observed: 46
+
+fixture:
+  target:
+    image: edoburu/pgbouncer
+    version: v1.25.2-p0
+    digest: sha256:7d7a27d9e90985cab5cf42256f5c13a3120baa4b055b69df37beb272b89b2340
+  backend:
+    image: postgres
+    version: 17-alpine
+    digest: sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+
+parity:
+  # Deliberately unset until the conformance harness produces a real number.
+  # The program's 90% default is a guess, and this component exists to replace
+  # it with a measurement. CI enforces the floor once it is set, and it never
+  # decreases.
+  floor: null
+
+dropped:
+  - metric: pgbouncer_up
+    reason: >
+      Scrape success is Collector self-telemetry, not telemetry about the
+      monitored system. Reported as pgbouncerreceiver.scrape.* and through
+      scrapererror partial-scrape handling. Re-emitted natively into the compat
+      scope so a cutting-over user's alerts keep working.
+  - metric: pgbouncer_exporter_build_info
+    reason: >
+      Describes the upstream exporter binary, which this component replaces.
+      There is no corresponding fact for us to report.
+
+deviations:
+  - id: two-sided-pool
+    summary: >
+      semconv's db.client.connection.* models one pool side; PgBouncer has two.
+      The server side (PgBouncer -> PostgreSQL) takes the convention because
+      PgBouncer is the client there. The client side (application -> PgBouncer)
+      takes a local pgbouncer.client.connection.* namespace. Collapsing them
+      would make pool saturation and client queueing indistinguishable.
+    semconv_candidate: true
+  - id: connection-state-enum
+    summary: >
+      db.client.connection.state defines idle and used; PgBouncer reports seven
+      server states. sv_active maps to used and sv_idle to idle; the remaining
+      five carry local values. PgBouncer's own sv_used is reported as
+      used_pending_check, not used -- it means idle beyond server_check_delay,
+      so aliasing it would double-count against sv_active and invert the metric.
+    semconv_candidate: true
+  - id: counter-not-histogram
+    summary: >
+      db.client.operation.duration and db.client.connection.wait_time are
+      histograms; PgBouncer exposes only cumulative counters. Emitted as
+      pgbouncer.query.time and pgbouncer.client.wait.time sums rather than as
+      single-bucket histograms under the released names.
+  - id: deprecated-db-user
+    summary: >
+      db.user is deprecated upstream as obsoleted with no replacement, so the
+      connecting role is a local pgbouncer.user. A pool is identified by
+      (database, user), so the role cannot simply be dropped.
+  - id: alias-versus-namespace
+    summary: >
+      SHOW POOLS and SHOW STATS key on the PgBouncer alias; only SHOW DATABASES
+      resolves it to the backend database, host and port. The receiver joins
+      them so db.namespace, server.address and server.port describe the
+      backend. The upstream exporter does not, so the compat scope still emits
+      the alias under the label `database`.
+  - id: unbounded-application-name
+    summary: >
+      pgbouncer_client_connections is dimensioned by application_name, which is
+      client-supplied and unbounded. Dropped from the OTel shape and the count
+      aggregated over the remaining keys; kept in the compat scope, which is
+      why that entry is compat_source: native.
+
+# Conventions this component leans on that can still change. Required by the
+# stability_disclosure check, and the re-review list on a semconv bump.
+stability:
+  semconv_version: v1.44.0
+  stable:
+    - db.namespace
+    - db.system.name
+    - server.address
+    - server.port
+  release_candidate:
+    - network.io.direction
+  development:
+    - db.client.connection.count
+    - db.client.connection.max
+    - db.client.connection.idle.min
+    - db.client.connection.pending_requests
+    - db.client.connection.state
+    - db.client.connection.pool.name

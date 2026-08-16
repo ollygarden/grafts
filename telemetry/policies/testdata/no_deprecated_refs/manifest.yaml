@@ -1,0 +1,9 @@
+schema_url: https://olly.garden/schemas/grafts/fixture/0.1.0
+description: >
+  Fixture proving `no_deprecated_refs` fires. `db.user` is deprecated upstream
+  as obsoleted, and `weaver registry check` resolves it silently -- that gap is
+  the entire reason the policy exists.
+stability: development
+dependencies:
+  - schema_url: https://opentelemetry.io/schemas/1.44.0
+    registry_path: /semconv/

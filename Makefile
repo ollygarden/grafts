@@ -1,4 +1,4 @@
-.PHONY: test lint fmt tidy build test-integration
+.PHONY: test lint fmt tidy build test-integration telemetry-check
 
 # All component packages
 PACKAGES := ./receiver/... ./exporter/...
@@ -41,3 +41,15 @@ build:
 test-integration:
 	@echo "Running integration tests..."
 	@go test -tags=integration -timeout=300s ./receiver/snmpreceiver/...
+
+# Validate every component's semantic-convention registry, then prove each Rego
+# policy still fires. Requires Docker; the Weaver version and the upstream
+# semconv pin live in telemetry/weaver.sh.
+telemetry-check:
+	@for r in receiver/*/telemetry/registry exporter/*/telemetry/registry; do \
+		[ -d "$$r" ] || continue; \
+		echo "Checking $$r..."; \
+		./telemetry/weaver.sh check "$$r" || exit 1; \
+	done
+	@echo "Proving the policies fire..."
+	@./telemetry/policies/run-fixtures.sh

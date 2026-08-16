@@ -1,0 +1,7 @@
+schema_url: https://olly.garden/schemas/grafts/fixture/0.1.0
+description: >
+  Fixture proving `local_prefix` fires: a declaration in a namespace this registry neither owns nor imported.
+stability: development
+dependencies:
+  - schema_url: https://opentelemetry.io/schemas/1.44.0
+    registry_path: /semconv/

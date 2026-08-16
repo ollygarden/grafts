@@ -1,0 +1,20 @@
+file_format: definition/2
+
+imports:
+  metrics:
+    - db.client.connection.count
+
+metrics:
+  # Upstream declares this an updowncounter. A counter cannot go down, so this
+  # would silently misreport every connection returning to the pool.
+  - name: db.client.connection.count
+    instrument: counter
+    unit: "{connection}"
+    stability: development
+    requirement_level: recommended
+    brief: "Redeclares an imported convention as the wrong instrument."
+    annotations:
+      prometheus:
+        source_metric: fixture_instrument_match
+        disposition: map
+        compat_source: derived
