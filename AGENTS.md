@@ -10,7 +10,7 @@ validation reference.
 
 ## Development commands
 
-Use Go 1.26 to match CI. The root module declares Go 1.25 compatibility. The
+Use Go 1.26.6 to match CI. The root module declares Go 1.26.6 compatibility. The
 distribution build also requires the OCB `builder`; its Makefile installs the
 version pinned by `OCB_VERSION` when `builder` is not already available.
 

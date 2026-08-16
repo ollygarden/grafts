@@ -11,7 +11,7 @@ map, repository workflow, guardrails, and change-specific validation matrix.
 
 ## Set up and validate
 
-Use Go 1.26 to match CI; the module retains Go 1.25 compatibility. The
+Use Go 1.26.6 to match CI; the module retains Go 1.26.6 compatibility. The
 distribution build uses the OpenTelemetry Collector Builder. SNMP integration
 tests require Docker and skip when it is unavailable.
 
