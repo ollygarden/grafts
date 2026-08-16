@@ -31,6 +31,10 @@ type pgbouncerReceiver struct {
 	cancel  context.CancelFunc
 	done    chan struct{}
 	once    sync.Once
+
+	// connect is a seam: lifecycle tests drive Start and Shutdown without a
+	// PgBouncer to connect to.
+	connect func(ctx context.Context, connString string) (client, error)
 }
 
 func newReceiver(cfg *Config, settings *receiver.Settings, next consumer.Metrics) (*pgbouncerReceiver, error) {
@@ -45,6 +49,9 @@ func newReceiver(cfg *Config, settings *receiver.Settings, next consumer.Metrics
 		settings: settings,
 		consumer: next,
 		done:     make(chan struct{}),
+		connect: func(ctx context.Context, connString string) (client, error) {
+			return newClient(ctx, connString)
+		},
 		scraper: &scraper{
 			cfg: cfg,
 			mb: telemetry.NewMetricsBuilder(
@@ -62,11 +69,11 @@ func newReceiver(cfg *Config, settings *receiver.Settings, next consumer.Metrics
 // a wrong endpoint or a role missing from `stats_users` is a startup error the
 // operator sees, not a metric that quietly never appears.
 func (r *pgbouncerReceiver) Start(ctx context.Context, _ component.Host) error {
-	client, err := newClient(ctx, r.cfg.connString())
+	c, err := r.connect(ctx, r.cfg.connString())
 	if err != nil {
 		return err
 	}
-	r.scraper.client = client
+	r.scraper.client = c
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel

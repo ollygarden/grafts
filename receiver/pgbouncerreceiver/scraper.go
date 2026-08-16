@@ -151,20 +151,36 @@ func (s *scraper) recordDatabases(now pcommon.Timestamp, rows []Row) map[string]
 		}
 		index[db.alias] = db
 
-		s.mb.RecordDBClientConnectionMax(now, row.Int("pool_size"),
-			poolName(db, ""), db.namespace, db.alias, db.host, db.port)
-		s.mb.RecordDBClientConnectionIdleMin(now, row.Int("min_pool_size"),
-			poolName(db, ""), db.namespace, db.alias, db.host, db.port)
-		s.mb.RecordPgbouncerDatabaseConnectionCount(now, row.Int("current_connections"),
-			db.namespace, db.alias, db.host, db.port)
-		s.mb.RecordPgbouncerDatabaseConnectionMax(now, row.Int("max_connections"),
-			db.namespace, db.alias, db.host, db.port)
-		s.mb.RecordPgbouncerDatabaseReservePoolSize(now, row.Int("reserve_pool_size"),
-			db.namespace, db.alias, db.host, db.port)
-		s.mb.RecordPgbouncerDatabasePaused(now, row.Int("paused"),
-			db.namespace, db.alias, db.host, db.port)
-		s.mb.RecordPgbouncerDatabaseDisabled(now, row.Int("disabled"),
-			db.namespace, db.alias, db.host, db.port)
+		pool := poolName(db, "")
+		s.mb.RecordDBClientConnectionMax(now, row.Int("pool_size"), telemetry.DBClientConnectionMaxAttributes{
+			DBClientConnectionPoolName: pool,
+			DBNamespace:                db.namespace,
+			PgbouncerDatabaseAlias:     db.alias,
+			ServerAddress:              db.host,
+			ServerPort:                 db.port,
+		})
+		s.mb.RecordDBClientConnectionIdleMin(now, row.Int("min_pool_size"), telemetry.DBClientConnectionIdleMinAttributes{
+			DBClientConnectionPoolName: pool,
+			DBNamespace:                db.namespace,
+			PgbouncerDatabaseAlias:     db.alias,
+			ServerAddress:              db.host,
+			ServerPort:                 db.port,
+		})
+		s.mb.RecordPgbouncerDatabaseConnectionCount(now, row.Int("current_connections"), telemetry.PgbouncerDatabaseConnectionCountAttributes{
+			DBNamespace: db.namespace, PgbouncerDatabaseAlias: db.alias, ServerAddress: db.host, ServerPort: db.port,
+		})
+		s.mb.RecordPgbouncerDatabaseConnectionMax(now, row.Int("max_connections"), telemetry.PgbouncerDatabaseConnectionMaxAttributes{
+			DBNamespace: db.namespace, PgbouncerDatabaseAlias: db.alias, ServerAddress: db.host, ServerPort: db.port,
+		})
+		s.mb.RecordPgbouncerDatabaseReservePoolSize(now, row.Int("reserve_pool_size"), telemetry.PgbouncerDatabaseReservePoolSizeAttributes{
+			DBNamespace: db.namespace, PgbouncerDatabaseAlias: db.alias, ServerAddress: db.host, ServerPort: db.port,
+		})
+		s.mb.RecordPgbouncerDatabasePaused(now, row.Int("paused"), telemetry.PgbouncerDatabasePausedAttributes{
+			DBNamespace: db.namespace, PgbouncerDatabaseAlias: db.alias, ServerAddress: db.host, ServerPort: db.port,
+		})
+		s.mb.RecordPgbouncerDatabaseDisabled(now, row.Int("disabled"), telemetry.PgbouncerDatabaseDisabledAttributes{
+			DBNamespace: db.namespace, PgbouncerDatabaseAlias: db.alias, ServerAddress: db.host, ServerPort: db.port,
+		})
 	}
 	return index
 }
@@ -183,23 +199,44 @@ func (s *scraper) recordPools(now pcommon.Timestamp, rows []Row, databases map[s
 		pool := poolName(db, user)
 
 		for _, st := range serverStates {
-			s.mb.RecordDBClientConnectionCount(now, row.Int(st.column),
-				pool, st.state, db.namespace, db.alias, user, db.host, db.port)
+			s.mb.RecordDBClientConnectionCount(now, row.Int(st.column), telemetry.DBClientConnectionCountAttributes{
+				DBClientConnectionPoolName: pool,
+				DBClientConnectionState:    st.state,
+				DBNamespace:                db.namespace,
+				PgbouncerDatabaseAlias:     db.alias,
+				PgbouncerUser:              user,
+				ServerAddress:              db.host,
+				ServerPort:                 db.port,
+			})
 		}
 		for _, st := range clientStates {
-			s.mb.RecordPgbouncerClientConnectionCount(now, row.Int(st.column),
-				st.state, db.namespace, db.alias, user, db.host, db.port)
+			s.mb.RecordPgbouncerClientConnectionCount(now, row.Int(st.column), telemetry.PgbouncerClientConnectionCountAttributes{
+				DBNamespace:                    db.namespace,
+				PgbouncerClientConnectionState: st.state,
+				PgbouncerDatabaseAlias:         db.alias,
+				PgbouncerUser:                  user,
+				ServerAddress:                  db.host,
+				ServerPort:                     db.port,
+			})
 		}
 
 		// cl_waiting is reported twice on purpose: as a client-side state
 		// above, and here as the convention's view of server-pool saturation.
-		s.mb.RecordDBClientConnectionPendingRequests(now, row.Int("cl_waiting"),
-			pool, db.namespace, db.alias, user, db.host, db.port)
+		s.mb.RecordDBClientConnectionPendingRequests(now, row.Int("cl_waiting"), telemetry.DBClientConnectionPendingRequestsAttributes{
+			DBClientConnectionPoolName: pool,
+			DBNamespace:                db.namespace,
+			PgbouncerDatabaseAlias:     db.alias,
+			PgbouncerUser:              user,
+			ServerAddress:              db.host,
+			ServerPort:                 db.port,
+		})
 
 		// maxwait_us is the sub-second remainder of maxwait, not a separate
 		// measurement -- adding them is what makes this a real duration.
 		maxwait := row.Float("maxwait") + row.Float("maxwait_us")/1e6
-		s.mb.RecordPgbouncerClientWaitMax(now, maxwait, db.namespace, db.alias, user)
+		s.mb.RecordPgbouncerClientWaitMax(now, maxwait, telemetry.PgbouncerClientWaitMaxAttributes{
+			DBNamespace: db.namespace, PgbouncerDatabaseAlias: db.alias, PgbouncerUser: user,
+		})
 	}
 }
 
@@ -213,29 +250,43 @@ func (s *scraper) recordStats(now pcommon.Timestamp, rows []Row, databases map[s
 		}
 		ns := db.namespace
 
-		s.mb.RecordPgbouncerQueryCount(now, row.Int("total_query_count"), ns, db.alias)
-		s.mb.RecordPgbouncerTransactionCount(now, row.Int("total_xact_count"), ns, db.alias)
-		s.mb.RecordPgbouncerServerAssignmentCount(now, row.Int("total_server_assignment_count"), ns, db.alias)
+		s.mb.RecordPgbouncerQueryCount(now, row.Int("total_query_count"),
+			telemetry.PgbouncerQueryCountAttributes{DBNamespace: ns, PgbouncerDatabaseAlias: db.alias})
+		s.mb.RecordPgbouncerTransactionCount(now, row.Int("total_xact_count"),
+			telemetry.PgbouncerTransactionCountAttributes{DBNamespace: ns, PgbouncerDatabaseAlias: db.alias})
+		s.mb.RecordPgbouncerServerAssignmentCount(now, row.Int("total_server_assignment_count"),
+			telemetry.PgbouncerServerAssignmentCountAttributes{DBNamespace: ns, PgbouncerDatabaseAlias: db.alias})
 
 		// PgBouncer reports these in microseconds; the conventions are seconds.
-		s.mb.RecordPgbouncerQueryTime(now, row.Float("total_query_time")/1e6, ns, db.alias)
-		s.mb.RecordPgbouncerTransactionTime(now, row.Float("total_xact_time")/1e6, ns, db.alias)
-		s.mb.RecordPgbouncerClientWaitTime(now, row.Float("total_wait_time")/1e6, ns, db.alias)
+		s.mb.RecordPgbouncerQueryTime(now, row.Float("total_query_time")/1e6,
+			telemetry.PgbouncerQueryTimeAttributes{DBNamespace: ns, PgbouncerDatabaseAlias: db.alias})
+		s.mb.RecordPgbouncerTransactionTime(now, row.Float("total_xact_time")/1e6,
+			telemetry.PgbouncerTransactionTimeAttributes{DBNamespace: ns, PgbouncerDatabaseAlias: db.alias})
+		s.mb.RecordPgbouncerClientWaitTime(now, row.Float("total_wait_time")/1e6,
+			telemetry.PgbouncerClientWaitTimeAttributes{DBNamespace: ns, PgbouncerDatabaseAlias: db.alias})
 
-		s.mb.RecordPgbouncerNetworkIO(now, row.Int("total_received"),
-			ns, telemetry.AttributeNetworkIODirectionReceive, db.alias)
-		s.mb.RecordPgbouncerNetworkIO(now, row.Int("total_sent"),
-			ns, telemetry.AttributeNetworkIODirectionTransmit, db.alias)
+		s.mb.RecordPgbouncerNetworkIO(now, row.Int("total_received"), telemetry.PgbouncerNetworkIOAttributes{
+			DBNamespace: ns, NetworkIODirection: telemetry.AttributeNetworkIODirectionReceive, PgbouncerDatabaseAlias: db.alias,
+		})
+		s.mb.RecordPgbouncerNetworkIO(now, row.Int("total_sent"), telemetry.PgbouncerNetworkIOAttributes{
+			DBNamespace: ns, NetworkIODirection: telemetry.AttributeNetworkIODirectionTransmit, PgbouncerDatabaseAlias: db.alias,
+		})
 
-		s.mb.RecordPgbouncerPreparedStatementCount(now, row.Int("total_client_parse_count"),
-			ns, telemetry.AttributePgbouncerPeerClient, db.alias,
-			telemetry.AttributePgbouncerPreparedStatementOperationParse)
-		s.mb.RecordPgbouncerPreparedStatementCount(now, row.Int("total_server_parse_count"),
-			ns, telemetry.AttributePgbouncerPeerServer, db.alias,
-			telemetry.AttributePgbouncerPreparedStatementOperationParse)
-		s.mb.RecordPgbouncerPreparedStatementCount(now, row.Int("total_bind_count"),
-			ns, "", db.alias,
-			telemetry.AttributePgbouncerPreparedStatementOperationBind)
+		s.mb.RecordPgbouncerPreparedStatementCount(now, row.Int("total_client_parse_count"), telemetry.PgbouncerPreparedStatementCountAttributes{
+			DBNamespace: ns, PgbouncerDatabaseAlias: db.alias,
+			PgbouncerPeer:                       telemetry.AttributePgbouncerPeerClient,
+			PgbouncerPreparedStatementOperation: telemetry.AttributePgbouncerPreparedStatementOperationParse,
+		})
+		s.mb.RecordPgbouncerPreparedStatementCount(now, row.Int("total_server_parse_count"), telemetry.PgbouncerPreparedStatementCountAttributes{
+			DBNamespace: ns, PgbouncerDatabaseAlias: db.alias,
+			PgbouncerPeer:                       telemetry.AttributePgbouncerPeerServer,
+			PgbouncerPreparedStatementOperation: telemetry.AttributePgbouncerPreparedStatementOperationParse,
+		})
+		// A Bind message has no peer: it is counted once, not on both sides.
+		s.mb.RecordPgbouncerPreparedStatementCount(now, row.Int("total_bind_count"), telemetry.PgbouncerPreparedStatementCountAttributes{
+			DBNamespace: ns, PgbouncerDatabaseAlias: db.alias,
+			PgbouncerPreparedStatementOperation: telemetry.AttributePgbouncerPreparedStatementOperationBind,
+		})
 	}
 }
 
@@ -255,15 +306,34 @@ func (s *scraper) recordLists(now pcommon.Timestamp, rows []Row) {
 	s.mb.RecordPgbouncerPoolCount(now, lists["pools"])
 	s.mb.RecordPgbouncerDNSQueryCount(now, lists["dns_pending"])
 
-	s.mb.RecordPgbouncerClientCount(now, lists["free_clients"], telemetry.AttributePgbouncerClientStateFree)
-	s.mb.RecordPgbouncerClientCount(now, lists["used_clients"], telemetry.AttributePgbouncerClientStateUsed)
-	s.mb.RecordPgbouncerClientCount(now, lists["login_clients"], telemetry.AttributePgbouncerClientStateLogin)
-
-	s.mb.RecordPgbouncerServerCount(now, lists["free_servers"], telemetry.AttributePgbouncerServerStateFree)
-	s.mb.RecordPgbouncerServerCount(now, lists["used_servers"], telemetry.AttributePgbouncerServerStateUsed)
-
-	s.mb.RecordPgbouncerDNSCacheCount(now, lists["dns_names"], telemetry.AttributePgbouncerDNSCacheTypeName)
-	s.mb.RecordPgbouncerDNSCacheCount(now, lists["dns_zones"], telemetry.AttributePgbouncerDNSCacheTypeZone)
+	for _, c := range []struct {
+		list  string
+		state string
+	}{
+		{"free_clients", telemetry.AttributePgbouncerClientStateFree},
+		{"used_clients", telemetry.AttributePgbouncerClientStateUsed},
+		{"login_clients", telemetry.AttributePgbouncerClientStateLogin},
+	} {
+		s.mb.RecordPgbouncerClientCount(now, lists[c.list], telemetry.PgbouncerClientCountAttributes{PgbouncerClientState: c.state})
+	}
+	for _, c := range []struct {
+		list  string
+		state string
+	}{
+		{"free_servers", telemetry.AttributePgbouncerServerStateFree},
+		{"used_servers", telemetry.AttributePgbouncerServerStateUsed},
+	} {
+		s.mb.RecordPgbouncerServerCount(now, lists[c.list], telemetry.PgbouncerServerCountAttributes{PgbouncerServerState: c.state})
+	}
+	for _, c := range []struct {
+		list      string
+		cacheType string
+	}{
+		{"dns_names", telemetry.AttributePgbouncerDNSCacheTypeName},
+		{"dns_zones", telemetry.AttributePgbouncerDNSCacheTypeZone},
+	} {
+		s.mb.RecordPgbouncerDNSCacheCount(now, lists[c.list], telemetry.PgbouncerDNSCacheCountAttributes{PgbouncerDNSCacheType: c.cacheType})
+	}
 }
 
 // recordConfig reports the two limits the upstream exporter surfaces from
@@ -299,8 +369,12 @@ func (s *scraper) recordClients(now pcommon.Timestamp, rows []Row, databases map
 		if db.alias == "" {
 			db = database{alias: k.alias, namespace: k.alias}
 		}
-		s.mb.RecordPgbouncerClientConnectionDetailCount(now, count,
-			db.namespace, db.alias, k.state, k.user)
+		s.mb.RecordPgbouncerClientConnectionDetailCount(now, count, telemetry.PgbouncerClientConnectionDetailCountAttributes{
+			DBNamespace:            db.namespace,
+			PgbouncerClientState:   k.state,
+			PgbouncerDatabaseAlias: db.alias,
+			PgbouncerUser:          k.user,
+		})
 	}
 }
 

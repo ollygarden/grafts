@@ -179,7 +179,25 @@ func (m *metricDBClientConnectionCount) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricDBClientConnectionCount) record(start, ts pcommon.Timestamp, value int64, dbClientConnectionPoolName string, dbClientConnectionState string, dbNamespace string, pgbouncerDatabaseAlias string, pgbouncerUser string, serverAddress string, serverPort int64) {
+// DBClientConnectionCountAttributes carries the attributes of db.client.connection.count.
+type DBClientConnectionCountAttributes struct {
+	// DBClientConnectionPoolName is `db.client.connection.pool.name`.
+	DBClientConnectionPoolName string
+	// DBClientConnectionState is `db.client.connection.state`.
+	DBClientConnectionState string
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+	// PgbouncerUser is `pgbouncer.user`.
+	PgbouncerUser string
+	// ServerAddress is `server.address`.
+	ServerAddress string
+	// ServerPort is `server.port`.
+	ServerPort int64
+}
+
+func (m *metricDBClientConnectionCount) record(start, ts pcommon.Timestamp, value int64, attrs DBClientConnectionCountAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -187,13 +205,13 @@ func (m *metricDBClientConnectionCount) record(start, ts pcommon.Timestamp, valu
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("db.client.connection.pool.name", dbClientConnectionPoolName)
-	dp.Attributes().PutStr("db.client.connection.state", dbClientConnectionState)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
-	dp.Attributes().PutStr("pgbouncer.user", pgbouncerUser)
-	dp.Attributes().PutStr("server.address", serverAddress)
-	dp.Attributes().PutInt("server.port", serverPort)
+	dp.Attributes().PutStr("db.client.connection.pool.name", attrs.DBClientConnectionPoolName)
+	dp.Attributes().PutStr("db.client.connection.state", attrs.DBClientConnectionState)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("pgbouncer.user", attrs.PgbouncerUser)
+	dp.Attributes().PutStr("server.address", attrs.ServerAddress)
+	dp.Attributes().PutInt("server.port", attrs.ServerPort)
 }
 
 func (m *metricDBClientConnectionCount) emit(ms pmetric.MetricSlice) {
@@ -220,7 +238,21 @@ func (m *metricDBClientConnectionIdleMin) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricDBClientConnectionIdleMin) record(start, ts pcommon.Timestamp, value int64, dbClientConnectionPoolName string, dbNamespace string, pgbouncerDatabaseAlias string, serverAddress string, serverPort int64) {
+// DBClientConnectionIdleMinAttributes carries the attributes of db.client.connection.idle.min.
+type DBClientConnectionIdleMinAttributes struct {
+	// DBClientConnectionPoolName is `db.client.connection.pool.name`.
+	DBClientConnectionPoolName string
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+	// ServerAddress is `server.address`.
+	ServerAddress string
+	// ServerPort is `server.port`.
+	ServerPort int64
+}
+
+func (m *metricDBClientConnectionIdleMin) record(start, ts pcommon.Timestamp, value int64, attrs DBClientConnectionIdleMinAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -228,11 +260,11 @@ func (m *metricDBClientConnectionIdleMin) record(start, ts pcommon.Timestamp, va
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("db.client.connection.pool.name", dbClientConnectionPoolName)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
-	dp.Attributes().PutStr("server.address", serverAddress)
-	dp.Attributes().PutInt("server.port", serverPort)
+	dp.Attributes().PutStr("db.client.connection.pool.name", attrs.DBClientConnectionPoolName)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("server.address", attrs.ServerAddress)
+	dp.Attributes().PutInt("server.port", attrs.ServerPort)
 }
 
 func (m *metricDBClientConnectionIdleMin) emit(ms pmetric.MetricSlice) {
@@ -259,7 +291,21 @@ func (m *metricDBClientConnectionMax) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricDBClientConnectionMax) record(start, ts pcommon.Timestamp, value int64, dbClientConnectionPoolName string, dbNamespace string, pgbouncerDatabaseAlias string, serverAddress string, serverPort int64) {
+// DBClientConnectionMaxAttributes carries the attributes of db.client.connection.max.
+type DBClientConnectionMaxAttributes struct {
+	// DBClientConnectionPoolName is `db.client.connection.pool.name`.
+	DBClientConnectionPoolName string
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+	// ServerAddress is `server.address`.
+	ServerAddress string
+	// ServerPort is `server.port`.
+	ServerPort int64
+}
+
+func (m *metricDBClientConnectionMax) record(start, ts pcommon.Timestamp, value int64, attrs DBClientConnectionMaxAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -267,11 +313,11 @@ func (m *metricDBClientConnectionMax) record(start, ts pcommon.Timestamp, value 
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("db.client.connection.pool.name", dbClientConnectionPoolName)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
-	dp.Attributes().PutStr("server.address", serverAddress)
-	dp.Attributes().PutInt("server.port", serverPort)
+	dp.Attributes().PutStr("db.client.connection.pool.name", attrs.DBClientConnectionPoolName)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("server.address", attrs.ServerAddress)
+	dp.Attributes().PutInt("server.port", attrs.ServerPort)
 }
 
 func (m *metricDBClientConnectionMax) emit(ms pmetric.MetricSlice) {
@@ -298,7 +344,23 @@ func (m *metricDBClientConnectionPendingRequests) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricDBClientConnectionPendingRequests) record(start, ts pcommon.Timestamp, value int64, dbClientConnectionPoolName string, dbNamespace string, pgbouncerDatabaseAlias string, pgbouncerUser string, serverAddress string, serverPort int64) {
+// DBClientConnectionPendingRequestsAttributes carries the attributes of db.client.connection.pending_requests.
+type DBClientConnectionPendingRequestsAttributes struct {
+	// DBClientConnectionPoolName is `db.client.connection.pool.name`.
+	DBClientConnectionPoolName string
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+	// PgbouncerUser is `pgbouncer.user`.
+	PgbouncerUser string
+	// ServerAddress is `server.address`.
+	ServerAddress string
+	// ServerPort is `server.port`.
+	ServerPort int64
+}
+
+func (m *metricDBClientConnectionPendingRequests) record(start, ts pcommon.Timestamp, value int64, attrs DBClientConnectionPendingRequestsAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -306,12 +368,12 @@ func (m *metricDBClientConnectionPendingRequests) record(start, ts pcommon.Times
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("db.client.connection.pool.name", dbClientConnectionPoolName)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
-	dp.Attributes().PutStr("pgbouncer.user", pgbouncerUser)
-	dp.Attributes().PutStr("server.address", serverAddress)
-	dp.Attributes().PutInt("server.port", serverPort)
+	dp.Attributes().PutStr("db.client.connection.pool.name", attrs.DBClientConnectionPoolName)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("pgbouncer.user", attrs.PgbouncerUser)
+	dp.Attributes().PutStr("server.address", attrs.ServerAddress)
+	dp.Attributes().PutInt("server.port", attrs.ServerPort)
 }
 
 func (m *metricDBClientConnectionPendingRequests) emit(ms pmetric.MetricSlice) {
@@ -338,7 +400,23 @@ func (m *metricPgbouncerClientConnectionCount) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerClientConnectionCount) record(start, ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerClientConnectionState string, pgbouncerDatabaseAlias string, pgbouncerUser string, serverAddress string, serverPort int64) {
+// PgbouncerClientConnectionCountAttributes carries the attributes of pgbouncer.client.connection.count.
+type PgbouncerClientConnectionCountAttributes struct {
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerClientConnectionState is `pgbouncer.client.connection.state`.
+	PgbouncerClientConnectionState string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+	// PgbouncerUser is `pgbouncer.user`.
+	PgbouncerUser string
+	// ServerAddress is `server.address`.
+	ServerAddress string
+	// ServerPort is `server.port`.
+	ServerPort int64
+}
+
+func (m *metricPgbouncerClientConnectionCount) record(start, ts pcommon.Timestamp, value int64, attrs PgbouncerClientConnectionCountAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -346,12 +424,12 @@ func (m *metricPgbouncerClientConnectionCount) record(start, ts pcommon.Timestam
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.client.connection.state", pgbouncerClientConnectionState)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
-	dp.Attributes().PutStr("pgbouncer.user", pgbouncerUser)
-	dp.Attributes().PutStr("server.address", serverAddress)
-	dp.Attributes().PutInt("server.port", serverPort)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.client.connection.state", attrs.PgbouncerClientConnectionState)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("pgbouncer.user", attrs.PgbouncerUser)
+	dp.Attributes().PutStr("server.address", attrs.ServerAddress)
+	dp.Attributes().PutInt("server.port", attrs.ServerPort)
 }
 
 func (m *metricPgbouncerClientConnectionCount) emit(ms pmetric.MetricSlice) {
@@ -378,7 +456,19 @@ func (m *metricPgbouncerClientConnectionDetailCount) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerClientConnectionDetailCount) record(start, ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerClientState string, pgbouncerDatabaseAlias string, pgbouncerUser string) {
+// PgbouncerClientConnectionDetailCountAttributes carries the attributes of pgbouncer.client.connection.detail.count.
+type PgbouncerClientConnectionDetailCountAttributes struct {
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerClientState is `pgbouncer.client.state`.
+	PgbouncerClientState string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+	// PgbouncerUser is `pgbouncer.user`.
+	PgbouncerUser string
+}
+
+func (m *metricPgbouncerClientConnectionDetailCount) record(start, ts pcommon.Timestamp, value int64, attrs PgbouncerClientConnectionDetailCountAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -386,10 +476,10 @@ func (m *metricPgbouncerClientConnectionDetailCount) record(start, ts pcommon.Ti
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.client.state", pgbouncerClientState)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
-	dp.Attributes().PutStr("pgbouncer.user", pgbouncerUser)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.client.state", attrs.PgbouncerClientState)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("pgbouncer.user", attrs.PgbouncerUser)
 }
 
 func (m *metricPgbouncerClientConnectionDetailCount) emit(ms pmetric.MetricSlice) {
@@ -450,7 +540,13 @@ func (m *metricPgbouncerClientCount) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerClientCount) record(start, ts pcommon.Timestamp, value int64, pgbouncerClientState string) {
+// PgbouncerClientCountAttributes carries the attributes of pgbouncer.client.count.
+type PgbouncerClientCountAttributes struct {
+	// PgbouncerClientState is `pgbouncer.client.state`.
+	PgbouncerClientState string
+}
+
+func (m *metricPgbouncerClientCount) record(start, ts pcommon.Timestamp, value int64, attrs PgbouncerClientCountAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -458,7 +554,7 @@ func (m *metricPgbouncerClientCount) record(start, ts pcommon.Timestamp, value i
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("pgbouncer.client.state", pgbouncerClientState)
+	dp.Attributes().PutStr("pgbouncer.client.state", attrs.PgbouncerClientState)
 }
 
 func (m *metricPgbouncerClientCount) emit(ms pmetric.MetricSlice) {
@@ -483,7 +579,17 @@ func (m *metricPgbouncerClientWaitMax) init() {
 	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerClientWaitMax) record(start, ts pcommon.Timestamp, value float64, dbNamespace string, pgbouncerDatabaseAlias string, pgbouncerUser string) {
+// PgbouncerClientWaitMaxAttributes carries the attributes of pgbouncer.client.wait.max.
+type PgbouncerClientWaitMaxAttributes struct {
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+	// PgbouncerUser is `pgbouncer.user`.
+	PgbouncerUser string
+}
+
+func (m *metricPgbouncerClientWaitMax) record(start, ts pcommon.Timestamp, value float64, attrs PgbouncerClientWaitMaxAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -491,9 +597,9 @@ func (m *metricPgbouncerClientWaitMax) record(start, ts pcommon.Timestamp, value
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetDoubleValue(value)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
-	dp.Attributes().PutStr("pgbouncer.user", pgbouncerUser)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("pgbouncer.user", attrs.PgbouncerUser)
 }
 
 func (m *metricPgbouncerClientWaitMax) emit(ms pmetric.MetricSlice) {
@@ -520,7 +626,15 @@ func (m *metricPgbouncerClientWaitTime) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerClientWaitTime) record(start, ts pcommon.Timestamp, value float64, dbNamespace string, pgbouncerDatabaseAlias string) {
+// PgbouncerClientWaitTimeAttributes carries the attributes of pgbouncer.client.wait.time.
+type PgbouncerClientWaitTimeAttributes struct {
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+}
+
+func (m *metricPgbouncerClientWaitTime) record(start, ts pcommon.Timestamp, value float64, attrs PgbouncerClientWaitTimeAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -528,8 +642,8 @@ func (m *metricPgbouncerClientWaitTime) record(start, ts pcommon.Timestamp, valu
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetDoubleValue(value)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
 }
 
 func (m *metricPgbouncerClientWaitTime) emit(ms pmetric.MetricSlice) {
@@ -556,7 +670,19 @@ func (m *metricPgbouncerDatabaseConnectionCount) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerDatabaseConnectionCount) record(start, ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string, serverAddress string, serverPort int64) {
+// PgbouncerDatabaseConnectionCountAttributes carries the attributes of pgbouncer.database.connection.count.
+type PgbouncerDatabaseConnectionCountAttributes struct {
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+	// ServerAddress is `server.address`.
+	ServerAddress string
+	// ServerPort is `server.port`.
+	ServerPort int64
+}
+
+func (m *metricPgbouncerDatabaseConnectionCount) record(start, ts pcommon.Timestamp, value int64, attrs PgbouncerDatabaseConnectionCountAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -564,10 +690,10 @@ func (m *metricPgbouncerDatabaseConnectionCount) record(start, ts pcommon.Timest
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
-	dp.Attributes().PutStr("server.address", serverAddress)
-	dp.Attributes().PutInt("server.port", serverPort)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("server.address", attrs.ServerAddress)
+	dp.Attributes().PutInt("server.port", attrs.ServerPort)
 }
 
 func (m *metricPgbouncerDatabaseConnectionCount) emit(ms pmetric.MetricSlice) {
@@ -594,7 +720,19 @@ func (m *metricPgbouncerDatabaseConnectionMax) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerDatabaseConnectionMax) record(start, ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string, serverAddress string, serverPort int64) {
+// PgbouncerDatabaseConnectionMaxAttributes carries the attributes of pgbouncer.database.connection.max.
+type PgbouncerDatabaseConnectionMaxAttributes struct {
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+	// ServerAddress is `server.address`.
+	ServerAddress string
+	// ServerPort is `server.port`.
+	ServerPort int64
+}
+
+func (m *metricPgbouncerDatabaseConnectionMax) record(start, ts pcommon.Timestamp, value int64, attrs PgbouncerDatabaseConnectionMaxAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -602,10 +740,10 @@ func (m *metricPgbouncerDatabaseConnectionMax) record(start, ts pcommon.Timestam
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
-	dp.Attributes().PutStr("server.address", serverAddress)
-	dp.Attributes().PutInt("server.port", serverPort)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("server.address", attrs.ServerAddress)
+	dp.Attributes().PutInt("server.port", attrs.ServerPort)
 }
 
 func (m *metricPgbouncerDatabaseConnectionMax) emit(ms pmetric.MetricSlice) {
@@ -664,7 +802,19 @@ func (m *metricPgbouncerDatabaseDisabled) init() {
 	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerDatabaseDisabled) record(start, ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string, serverAddress string, serverPort int64) {
+// PgbouncerDatabaseDisabledAttributes carries the attributes of pgbouncer.database.disabled.
+type PgbouncerDatabaseDisabledAttributes struct {
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+	// ServerAddress is `server.address`.
+	ServerAddress string
+	// ServerPort is `server.port`.
+	ServerPort int64
+}
+
+func (m *metricPgbouncerDatabaseDisabled) record(start, ts pcommon.Timestamp, value int64, attrs PgbouncerDatabaseDisabledAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -672,10 +822,10 @@ func (m *metricPgbouncerDatabaseDisabled) record(start, ts pcommon.Timestamp, va
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
-	dp.Attributes().PutStr("server.address", serverAddress)
-	dp.Attributes().PutInt("server.port", serverPort)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("server.address", attrs.ServerAddress)
+	dp.Attributes().PutInt("server.port", attrs.ServerPort)
 }
 
 func (m *metricPgbouncerDatabaseDisabled) emit(ms pmetric.MetricSlice) {
@@ -700,7 +850,19 @@ func (m *metricPgbouncerDatabasePaused) init() {
 	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerDatabasePaused) record(start, ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string, serverAddress string, serverPort int64) {
+// PgbouncerDatabasePausedAttributes carries the attributes of pgbouncer.database.paused.
+type PgbouncerDatabasePausedAttributes struct {
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+	// ServerAddress is `server.address`.
+	ServerAddress string
+	// ServerPort is `server.port`.
+	ServerPort int64
+}
+
+func (m *metricPgbouncerDatabasePaused) record(start, ts pcommon.Timestamp, value int64, attrs PgbouncerDatabasePausedAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -708,10 +870,10 @@ func (m *metricPgbouncerDatabasePaused) record(start, ts pcommon.Timestamp, valu
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
-	dp.Attributes().PutStr("server.address", serverAddress)
-	dp.Attributes().PutInt("server.port", serverPort)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("server.address", attrs.ServerAddress)
+	dp.Attributes().PutInt("server.port", attrs.ServerPort)
 }
 
 func (m *metricPgbouncerDatabasePaused) emit(ms pmetric.MetricSlice) {
@@ -738,7 +900,19 @@ func (m *metricPgbouncerDatabaseReservePoolSize) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerDatabaseReservePoolSize) record(start, ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string, serverAddress string, serverPort int64) {
+// PgbouncerDatabaseReservePoolSizeAttributes carries the attributes of pgbouncer.database.reserve_pool.size.
+type PgbouncerDatabaseReservePoolSizeAttributes struct {
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+	// ServerAddress is `server.address`.
+	ServerAddress string
+	// ServerPort is `server.port`.
+	ServerPort int64
+}
+
+func (m *metricPgbouncerDatabaseReservePoolSize) record(start, ts pcommon.Timestamp, value int64, attrs PgbouncerDatabaseReservePoolSizeAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -746,10 +920,10 @@ func (m *metricPgbouncerDatabaseReservePoolSize) record(start, ts pcommon.Timest
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
-	dp.Attributes().PutStr("server.address", serverAddress)
-	dp.Attributes().PutInt("server.port", serverPort)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("server.address", attrs.ServerAddress)
+	dp.Attributes().PutInt("server.port", attrs.ServerPort)
 }
 
 func (m *metricPgbouncerDatabaseReservePoolSize) emit(ms pmetric.MetricSlice) {
@@ -776,7 +950,13 @@ func (m *metricPgbouncerDNSCacheCount) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerDNSCacheCount) record(start, ts pcommon.Timestamp, value int64, pgbouncerDNSCacheType string) {
+// PgbouncerDNSCacheCountAttributes carries the attributes of pgbouncer.dns.cache.count.
+type PgbouncerDNSCacheCountAttributes struct {
+	// PgbouncerDNSCacheType is `pgbouncer.dns.cache.type`.
+	PgbouncerDNSCacheType string
+}
+
+func (m *metricPgbouncerDNSCacheCount) record(start, ts pcommon.Timestamp, value int64, attrs PgbouncerDNSCacheCountAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -784,7 +964,7 @@ func (m *metricPgbouncerDNSCacheCount) record(start, ts pcommon.Timestamp, value
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("pgbouncer.dns.cache.type", pgbouncerDNSCacheType)
+	dp.Attributes().PutStr("pgbouncer.dns.cache.type", attrs.PgbouncerDNSCacheType)
 }
 
 func (m *metricPgbouncerDNSCacheCount) emit(ms pmetric.MetricSlice) {
@@ -845,7 +1025,17 @@ func (m *metricPgbouncerNetworkIO) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerNetworkIO) record(start, ts pcommon.Timestamp, value int64, dbNamespace string, networkIODirection string, pgbouncerDatabaseAlias string) {
+// PgbouncerNetworkIOAttributes carries the attributes of pgbouncer.network.io.
+type PgbouncerNetworkIOAttributes struct {
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// NetworkIODirection is `network.io.direction`.
+	NetworkIODirection string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+}
+
+func (m *metricPgbouncerNetworkIO) record(start, ts pcommon.Timestamp, value int64, attrs PgbouncerNetworkIOAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -853,9 +1043,9 @@ func (m *metricPgbouncerNetworkIO) record(start, ts pcommon.Timestamp, value int
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("network.io.direction", networkIODirection)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("network.io.direction", attrs.NetworkIODirection)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
 }
 
 func (m *metricPgbouncerNetworkIO) emit(ms pmetric.MetricSlice) {
@@ -916,7 +1106,19 @@ func (m *metricPgbouncerPreparedStatementCount) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerPreparedStatementCount) record(start, ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string, pgbouncerPeer string, pgbouncerPreparedStatementOperation string) {
+// PgbouncerPreparedStatementCountAttributes carries the attributes of pgbouncer.prepared_statement.count.
+type PgbouncerPreparedStatementCountAttributes struct {
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+	// PgbouncerPeer is `pgbouncer.peer`.
+	PgbouncerPeer string
+	// PgbouncerPreparedStatementOperation is `pgbouncer.prepared_statement.operation`.
+	PgbouncerPreparedStatementOperation string
+}
+
+func (m *metricPgbouncerPreparedStatementCount) record(start, ts pcommon.Timestamp, value int64, attrs PgbouncerPreparedStatementCountAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -924,10 +1126,10 @@ func (m *metricPgbouncerPreparedStatementCount) record(start, ts pcommon.Timesta
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
-	dp.Attributes().PutStr("pgbouncer.peer", pgbouncerPeer)
-	dp.Attributes().PutStr("pgbouncer.prepared_statement.operation", pgbouncerPreparedStatementOperation)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("pgbouncer.peer", attrs.PgbouncerPeer)
+	dp.Attributes().PutStr("pgbouncer.prepared_statement.operation", attrs.PgbouncerPreparedStatementOperation)
 }
 
 func (m *metricPgbouncerPreparedStatementCount) emit(ms pmetric.MetricSlice) {
@@ -954,7 +1156,15 @@ func (m *metricPgbouncerQueryCount) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerQueryCount) record(start, ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string) {
+// PgbouncerQueryCountAttributes carries the attributes of pgbouncer.query.count.
+type PgbouncerQueryCountAttributes struct {
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+}
+
+func (m *metricPgbouncerQueryCount) record(start, ts pcommon.Timestamp, value int64, attrs PgbouncerQueryCountAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -962,8 +1172,8 @@ func (m *metricPgbouncerQueryCount) record(start, ts pcommon.Timestamp, value in
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
 }
 
 func (m *metricPgbouncerQueryCount) emit(ms pmetric.MetricSlice) {
@@ -990,7 +1200,15 @@ func (m *metricPgbouncerQueryTime) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerQueryTime) record(start, ts pcommon.Timestamp, value float64, dbNamespace string, pgbouncerDatabaseAlias string) {
+// PgbouncerQueryTimeAttributes carries the attributes of pgbouncer.query.time.
+type PgbouncerQueryTimeAttributes struct {
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+}
+
+func (m *metricPgbouncerQueryTime) record(start, ts pcommon.Timestamp, value float64, attrs PgbouncerQueryTimeAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -998,8 +1216,8 @@ func (m *metricPgbouncerQueryTime) record(start, ts pcommon.Timestamp, value flo
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetDoubleValue(value)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
 }
 
 func (m *metricPgbouncerQueryTime) emit(ms pmetric.MetricSlice) {
@@ -1026,7 +1244,15 @@ func (m *metricPgbouncerServerAssignmentCount) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerServerAssignmentCount) record(start, ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string) {
+// PgbouncerServerAssignmentCountAttributes carries the attributes of pgbouncer.server.assignment.count.
+type PgbouncerServerAssignmentCountAttributes struct {
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+}
+
+func (m *metricPgbouncerServerAssignmentCount) record(start, ts pcommon.Timestamp, value int64, attrs PgbouncerServerAssignmentCountAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -1034,8 +1260,8 @@ func (m *metricPgbouncerServerAssignmentCount) record(start, ts pcommon.Timestam
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
 }
 
 func (m *metricPgbouncerServerAssignmentCount) emit(ms pmetric.MetricSlice) {
@@ -1062,7 +1288,13 @@ func (m *metricPgbouncerServerCount) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerServerCount) record(start, ts pcommon.Timestamp, value int64, pgbouncerServerState string) {
+// PgbouncerServerCountAttributes carries the attributes of pgbouncer.server.count.
+type PgbouncerServerCountAttributes struct {
+	// PgbouncerServerState is `pgbouncer.server.state`.
+	PgbouncerServerState string
+}
+
+func (m *metricPgbouncerServerCount) record(start, ts pcommon.Timestamp, value int64, attrs PgbouncerServerCountAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -1070,7 +1302,7 @@ func (m *metricPgbouncerServerCount) record(start, ts pcommon.Timestamp, value i
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("pgbouncer.server.state", pgbouncerServerState)
+	dp.Attributes().PutStr("pgbouncer.server.state", attrs.PgbouncerServerState)
 }
 
 func (m *metricPgbouncerServerCount) emit(ms pmetric.MetricSlice) {
@@ -1097,7 +1329,15 @@ func (m *metricPgbouncerTransactionCount) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerTransactionCount) record(start, ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string) {
+// PgbouncerTransactionCountAttributes carries the attributes of pgbouncer.transaction.count.
+type PgbouncerTransactionCountAttributes struct {
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+}
+
+func (m *metricPgbouncerTransactionCount) record(start, ts pcommon.Timestamp, value int64, attrs PgbouncerTransactionCountAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -1105,8 +1345,8 @@ func (m *metricPgbouncerTransactionCount) record(start, ts pcommon.Timestamp, va
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetIntValue(value)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
 }
 
 func (m *metricPgbouncerTransactionCount) emit(ms pmetric.MetricSlice) {
@@ -1133,7 +1373,15 @@ func (m *metricPgbouncerTransactionTime) init() {
 	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
 }
 
-func (m *metricPgbouncerTransactionTime) record(start, ts pcommon.Timestamp, value float64, dbNamespace string, pgbouncerDatabaseAlias string) {
+// PgbouncerTransactionTimeAttributes carries the attributes of pgbouncer.transaction.time.
+type PgbouncerTransactionTimeAttributes struct {
+	// DBNamespace is `db.namespace`.
+	DBNamespace string
+	// PgbouncerDatabaseAlias is `pgbouncer.database.alias`.
+	PgbouncerDatabaseAlias string
+}
+
+func (m *metricPgbouncerTransactionTime) record(start, ts pcommon.Timestamp, value float64, attrs PgbouncerTransactionTimeAttributes) {
 	if !m.config.Enabled {
 		return
 	}
@@ -1141,8 +1389,8 @@ func (m *metricPgbouncerTransactionTime) record(start, ts pcommon.Timestamp, val
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
 	dp.SetDoubleValue(value)
-	dp.Attributes().PutStr("db.namespace", dbNamespace)
-	dp.Attributes().PutStr("pgbouncer.database.alias", pgbouncerDatabaseAlias)
+	dp.Attributes().PutStr("db.namespace", attrs.DBNamespace)
+	dp.Attributes().PutStr("pgbouncer.database.alias", attrs.PgbouncerDatabaseAlias)
 }
 
 func (m *metricPgbouncerTransactionTime) emit(ms pmetric.MetricSlice) {
@@ -1341,8 +1589,8 @@ func NewMetricsBuilder(config MetricsConfig, startTime pcommon.Timestamp, scopeN
 // `sv_used` is deliberately *not* reported as `used`. PgBouncer's `sv_used` means idle for longer than `server_check_delay` and needing a check query before reuse -- an idle connection. Upstream `used` means in use, which is `sv_active`. Aliasing the two by name would double-count against `sv_active` and invert the metric people alert on.
 //
 // Instrument: updowncounter. Unit: {connection}. Stability: development.
-func (mb *MetricsBuilder) RecordDBClientConnectionCount(ts pcommon.Timestamp, value int64, dbClientConnectionPoolName string, dbClientConnectionState string, dbNamespace string, pgbouncerDatabaseAlias string, pgbouncerUser string, serverAddress string, serverPort int64) {
-	mb.metricDBClientConnectionCount.record(mb.startTime, ts, value, dbClientConnectionPoolName, dbClientConnectionState, dbNamespace, pgbouncerDatabaseAlias, pgbouncerUser, serverAddress, serverPort)
+func (mb *MetricsBuilder) RecordDBClientConnectionCount(ts pcommon.Timestamp, value int64, attrs DBClientConnectionCountAttributes) {
+	mb.metricDBClientConnectionCount.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordDBClientConnectionIdleMin records one datapoint of db.client.connection.idle.min.
@@ -1352,8 +1600,8 @@ func (mb *MetricsBuilder) RecordDBClientConnectionCount(ts pcommon.Timestamp, va
 // PgBouncer's `min_pool_size`, from `SHOW DATABASES`. The upstream exporter does not emit it; it is surface we add, so it has no Prometheus source and is excluded from the compat scope.
 //
 // Instrument: updowncounter. Unit: {connection}. Stability: development.
-func (mb *MetricsBuilder) RecordDBClientConnectionIdleMin(ts pcommon.Timestamp, value int64, dbClientConnectionPoolName string, dbNamespace string, pgbouncerDatabaseAlias string, serverAddress string, serverPort int64) {
-	mb.metricDBClientConnectionIdleMin.record(mb.startTime, ts, value, dbClientConnectionPoolName, dbNamespace, pgbouncerDatabaseAlias, serverAddress, serverPort)
+func (mb *MetricsBuilder) RecordDBClientConnectionIdleMin(ts pcommon.Timestamp, value int64, attrs DBClientConnectionIdleMinAttributes) {
+	mb.metricDBClientConnectionIdleMin.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordDBClientConnectionMax records one datapoint of db.client.connection.max.
@@ -1363,8 +1611,8 @@ func (mb *MetricsBuilder) RecordDBClientConnectionIdleMin(ts pcommon.Timestamp, 
 // PgBouncer's `pool_size`, from `SHOW DATABASES`.
 //
 // Instrument: updowncounter. Unit: {connection}. Stability: development.
-func (mb *MetricsBuilder) RecordDBClientConnectionMax(ts pcommon.Timestamp, value int64, dbClientConnectionPoolName string, dbNamespace string, pgbouncerDatabaseAlias string, serverAddress string, serverPort int64) {
-	mb.metricDBClientConnectionMax.record(mb.startTime, ts, value, dbClientConnectionPoolName, dbNamespace, pgbouncerDatabaseAlias, serverAddress, serverPort)
+func (mb *MetricsBuilder) RecordDBClientConnectionMax(ts pcommon.Timestamp, value int64, attrs DBClientConnectionMaxAttributes) {
+	mb.metricDBClientConnectionMax.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordDBClientConnectionPendingRequests records one datapoint of db.client.connection.pending_requests.
@@ -1374,8 +1622,8 @@ func (mb *MetricsBuilder) RecordDBClientConnectionMax(ts pcommon.Timestamp, valu
 // PgBouncer's `cl_waiting`, from `SHOW POOLS`. Reported here because it is exactly the convention's "current pending requests for an open connection" against the server pool, and again as `pgbouncer.client.connection.count{state=waiting}` because it is also a client-side state. The same number under two names is deliberate: the first is the semconv-native view of pool saturation, the second completes the client-side state breakdown.
 //
 // Instrument: updowncounter. Unit: {request}. Stability: development.
-func (mb *MetricsBuilder) RecordDBClientConnectionPendingRequests(ts pcommon.Timestamp, value int64, dbClientConnectionPoolName string, dbNamespace string, pgbouncerDatabaseAlias string, pgbouncerUser string, serverAddress string, serverPort int64) {
-	mb.metricDBClientConnectionPendingRequests.record(mb.startTime, ts, value, dbClientConnectionPoolName, dbNamespace, pgbouncerDatabaseAlias, pgbouncerUser, serverAddress, serverPort)
+func (mb *MetricsBuilder) RecordDBClientConnectionPendingRequests(ts pcommon.Timestamp, value int64, attrs DBClientConnectionPendingRequestsAttributes) {
+	mb.metricDBClientConnectionPendingRequests.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerClientConnectionCount records one datapoint of pgbouncer.client.connection.count.
@@ -1385,8 +1633,8 @@ func (mb *MetricsBuilder) RecordDBClientConnectionPendingRequests(ts pcommon.Tim
 // The application-facing half of the pooler, which upstream `db.client.connection.*` does not model -- that convention describes a pool a client holds *to* a database, which here is the PostgreSQL side. Candidate semconv contribution once a second proxy provides evidence.
 //
 // Instrument: updowncounter. Unit: {connection}. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerClientConnectionCount(ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerClientConnectionState string, pgbouncerDatabaseAlias string, pgbouncerUser string, serverAddress string, serverPort int64) {
-	mb.metricPgbouncerClientConnectionCount.record(mb.startTime, ts, value, dbNamespace, pgbouncerClientConnectionState, pgbouncerDatabaseAlias, pgbouncerUser, serverAddress, serverPort)
+func (mb *MetricsBuilder) RecordPgbouncerClientConnectionCount(ts pcommon.Timestamp, value int64, attrs PgbouncerClientConnectionCountAttributes) {
+	mb.metricPgbouncerClientConnectionCount.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerClientConnectionDetailCount records one datapoint of pgbouncer.client.connection.detail.count.
@@ -1398,8 +1646,8 @@ func (mb *MetricsBuilder) RecordPgbouncerClientConnectionCount(ts pcommon.Timest
 // The compat scope keeps `application_name`, because a user cutting over must see their existing series unchanged. That series cannot be reconstructed from this metric, which is why this entry is the one `compat_source: native` in the component.
 //
 // Instrument: updowncounter. Unit: {connection}. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerClientConnectionDetailCount(ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerClientState string, pgbouncerDatabaseAlias string, pgbouncerUser string) {
-	mb.metricPgbouncerClientConnectionDetailCount.record(mb.startTime, ts, value, dbNamespace, pgbouncerClientState, pgbouncerDatabaseAlias, pgbouncerUser)
+func (mb *MetricsBuilder) RecordPgbouncerClientConnectionDetailCount(ts pcommon.Timestamp, value int64, attrs PgbouncerClientConnectionDetailCountAttributes) {
+	mb.metricPgbouncerClientConnectionDetailCount.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerClientConnectionMax records one datapoint of pgbouncer.client.connection.max.
@@ -1418,8 +1666,8 @@ func (mb *MetricsBuilder) RecordPgbouncerClientConnectionMax(ts pcommon.Timestam
 // Client slots, by state.
 //
 // Instrument: updowncounter. Unit: {client}. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerClientCount(ts pcommon.Timestamp, value int64, pgbouncerClientState string) {
-	mb.metricPgbouncerClientCount.record(mb.startTime, ts, value, pgbouncerClientState)
+func (mb *MetricsBuilder) RecordPgbouncerClientCount(ts pcommon.Timestamp, value int64, attrs PgbouncerClientCountAttributes) {
+	mb.metricPgbouncerClientCount.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerClientWaitMax records one datapoint of pgbouncer.client.wait.max.
@@ -1429,8 +1677,8 @@ func (mb *MetricsBuilder) RecordPgbouncerClientCount(ts pcommon.Timestamp, value
 // PgBouncer's `maxwait`/`maxwait_us`, from `SHOW POOLS`. A non-zero value is the direct signal that a pool is saturated.
 //
 // Instrument: gauge. Unit: s. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerClientWaitMax(ts pcommon.Timestamp, value float64, dbNamespace string, pgbouncerDatabaseAlias string, pgbouncerUser string) {
-	mb.metricPgbouncerClientWaitMax.record(mb.startTime, ts, value, dbNamespace, pgbouncerDatabaseAlias, pgbouncerUser)
+func (mb *MetricsBuilder) RecordPgbouncerClientWaitMax(ts pcommon.Timestamp, value float64, attrs PgbouncerClientWaitMaxAttributes) {
+	mb.metricPgbouncerClientWaitMax.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerClientWaitTime records one datapoint of pgbouncer.client.wait.time.
@@ -1440,8 +1688,8 @@ func (mb *MetricsBuilder) RecordPgbouncerClientWaitMax(ts pcommon.Timestamp, val
 // Upstream `db.client.connection.wait_time` is semantically exact but is a **histogram**, and PgBouncer exposes only `total_wait_time`, a cumulative counter. A histogram with invented bounds passes review because the name looks right, so this is reported as a sum under a local name instead.
 //
 // Instrument: counter. Unit: s. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerClientWaitTime(ts pcommon.Timestamp, value float64, dbNamespace string, pgbouncerDatabaseAlias string) {
-	mb.metricPgbouncerClientWaitTime.record(mb.startTime, ts, value, dbNamespace, pgbouncerDatabaseAlias)
+func (mb *MetricsBuilder) RecordPgbouncerClientWaitTime(ts pcommon.Timestamp, value float64, attrs PgbouncerClientWaitTimeAttributes) {
+	mb.metricPgbouncerClientWaitTime.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerDatabaseConnectionCount records one datapoint of pgbouncer.database.connection.count.
@@ -1449,8 +1697,8 @@ func (mb *MetricsBuilder) RecordPgbouncerClientWaitTime(ts pcommon.Timestamp, va
 // Server connections currently open for a configured database.
 //
 // Instrument: updowncounter. Unit: {connection}. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerDatabaseConnectionCount(ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string, serverAddress string, serverPort int64) {
-	mb.metricPgbouncerDatabaseConnectionCount.record(mb.startTime, ts, value, dbNamespace, pgbouncerDatabaseAlias, serverAddress, serverPort)
+func (mb *MetricsBuilder) RecordPgbouncerDatabaseConnectionCount(ts pcommon.Timestamp, value int64, attrs PgbouncerDatabaseConnectionCountAttributes) {
+	mb.metricPgbouncerDatabaseConnectionCount.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerDatabaseConnectionMax records one datapoint of pgbouncer.database.connection.max.
@@ -1460,8 +1708,8 @@ func (mb *MetricsBuilder) RecordPgbouncerDatabaseConnectionCount(ts pcommon.Time
 // PgBouncer's `max_db_connections`, a ceiling across all pools for the database. Distinct from `db.client.connection.max`, which is one pool's `pool_size`.
 //
 // Instrument: updowncounter. Unit: {connection}. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerDatabaseConnectionMax(ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string, serverAddress string, serverPort int64) {
-	mb.metricPgbouncerDatabaseConnectionMax.record(mb.startTime, ts, value, dbNamespace, pgbouncerDatabaseAlias, serverAddress, serverPort)
+func (mb *MetricsBuilder) RecordPgbouncerDatabaseConnectionMax(ts pcommon.Timestamp, value int64, attrs PgbouncerDatabaseConnectionMaxAttributes) {
+	mb.metricPgbouncerDatabaseConnectionMax.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerDatabaseCount records one datapoint of pgbouncer.database.count.
@@ -1478,8 +1726,8 @@ func (mb *MetricsBuilder) RecordPgbouncerDatabaseCount(ts pcommon.Timestamp, val
 // 1 while a configured database is disabled, else 0.
 //
 // Instrument: gauge. Unit: 1. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerDatabaseDisabled(ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string, serverAddress string, serverPort int64) {
-	mb.metricPgbouncerDatabaseDisabled.record(mb.startTime, ts, value, dbNamespace, pgbouncerDatabaseAlias, serverAddress, serverPort)
+func (mb *MetricsBuilder) RecordPgbouncerDatabaseDisabled(ts pcommon.Timestamp, value int64, attrs PgbouncerDatabaseDisabledAttributes) {
+	mb.metricPgbouncerDatabaseDisabled.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerDatabasePaused records one datapoint of pgbouncer.database.paused.
@@ -1487,8 +1735,8 @@ func (mb *MetricsBuilder) RecordPgbouncerDatabaseDisabled(ts pcommon.Timestamp, 
 // 1 while a configured database is paused, else 0.
 //
 // Instrument: gauge. Unit: 1. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerDatabasePaused(ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string, serverAddress string, serverPort int64) {
-	mb.metricPgbouncerDatabasePaused.record(mb.startTime, ts, value, dbNamespace, pgbouncerDatabaseAlias, serverAddress, serverPort)
+func (mb *MetricsBuilder) RecordPgbouncerDatabasePaused(ts pcommon.Timestamp, value int64, attrs PgbouncerDatabasePausedAttributes) {
+	mb.metricPgbouncerDatabasePaused.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerDatabaseReservePoolSize records one datapoint of pgbouncer.database.reserve_pool.size.
@@ -1496,8 +1744,8 @@ func (mb *MetricsBuilder) RecordPgbouncerDatabasePaused(ts pcommon.Timestamp, va
 // Additional server connections allowed once a pool is saturated.
 //
 // Instrument: updowncounter. Unit: {connection}. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerDatabaseReservePoolSize(ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string, serverAddress string, serverPort int64) {
-	mb.metricPgbouncerDatabaseReservePoolSize.record(mb.startTime, ts, value, dbNamespace, pgbouncerDatabaseAlias, serverAddress, serverPort)
+func (mb *MetricsBuilder) RecordPgbouncerDatabaseReservePoolSize(ts pcommon.Timestamp, value int64, attrs PgbouncerDatabaseReservePoolSizeAttributes) {
+	mb.metricPgbouncerDatabaseReservePoolSize.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerDNSCacheCount records one datapoint of pgbouncer.dns.cache.count.
@@ -1505,8 +1753,8 @@ func (mb *MetricsBuilder) RecordPgbouncerDatabaseReservePoolSize(ts pcommon.Time
 // Entries in PgBouncer's DNS cache.
 //
 // Instrument: updowncounter. Unit: {entry}. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerDNSCacheCount(ts pcommon.Timestamp, value int64, pgbouncerDNSCacheType string) {
-	mb.metricPgbouncerDNSCacheCount.record(mb.startTime, ts, value, pgbouncerDNSCacheType)
+func (mb *MetricsBuilder) RecordPgbouncerDNSCacheCount(ts pcommon.Timestamp, value int64, attrs PgbouncerDNSCacheCountAttributes) {
+	mb.metricPgbouncerDNSCacheCount.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerDNSQueryCount records one datapoint of pgbouncer.dns.query.count.
@@ -1525,8 +1773,8 @@ func (mb *MetricsBuilder) RecordPgbouncerDNSQueryCount(ts pcommon.Timestamp, val
 // `network.io.direction` is `release_candidate`, not stable -- recorded in the component stability block.
 //
 // Instrument: counter. Unit: By. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerNetworkIO(ts pcommon.Timestamp, value int64, dbNamespace string, networkIODirection string, pgbouncerDatabaseAlias string) {
-	mb.metricPgbouncerNetworkIO.record(mb.startTime, ts, value, dbNamespace, networkIODirection, pgbouncerDatabaseAlias)
+func (mb *MetricsBuilder) RecordPgbouncerNetworkIO(ts pcommon.Timestamp, value int64, attrs PgbouncerNetworkIOAttributes) {
+	mb.metricPgbouncerNetworkIO.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerPoolCount records one datapoint of pgbouncer.pool.count.
@@ -1545,8 +1793,8 @@ func (mb *MetricsBuilder) RecordPgbouncerPoolCount(ts pcommon.Timestamp, value i
 // `pgbouncer.peer` separates the Parse messages PgBouncer received from clients from those it forwarded to PostgreSQL; the gap between them is what prepared-statement pooling saves. Bind messages are counted once and carry no peer.
 //
 // Instrument: counter. Unit: {message}. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerPreparedStatementCount(ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string, pgbouncerPeer string, pgbouncerPreparedStatementOperation string) {
-	mb.metricPgbouncerPreparedStatementCount.record(mb.startTime, ts, value, dbNamespace, pgbouncerDatabaseAlias, pgbouncerPeer, pgbouncerPreparedStatementOperation)
+func (mb *MetricsBuilder) RecordPgbouncerPreparedStatementCount(ts pcommon.Timestamp, value int64, attrs PgbouncerPreparedStatementCountAttributes) {
+	mb.metricPgbouncerPreparedStatementCount.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerQueryCount records one datapoint of pgbouncer.query.count.
@@ -1554,8 +1802,8 @@ func (mb *MetricsBuilder) RecordPgbouncerPreparedStatementCount(ts pcommon.Times
 // SQL queries pooled by PgBouncer.
 //
 // Instrument: counter. Unit: {query}. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerQueryCount(ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string) {
-	mb.metricPgbouncerQueryCount.record(mb.startTime, ts, value, dbNamespace, pgbouncerDatabaseAlias)
+func (mb *MetricsBuilder) RecordPgbouncerQueryCount(ts pcommon.Timestamp, value int64, attrs PgbouncerQueryCountAttributes) {
+	mb.metricPgbouncerQueryCount.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerQueryTime records one datapoint of pgbouncer.query.time.
@@ -1565,8 +1813,8 @@ func (mb *MetricsBuilder) RecordPgbouncerQueryCount(ts pcommon.Timestamp, value 
 // Upstream `db.client.operation.duration` is stable and is exactly this measurement, but it is a **histogram** and PgBouncer exposes only `total_query_time`, a cumulative counter. Reporting a single-bucket histogram under the released name would be a lie that passes review because the name looks right.
 //
 // Instrument: counter. Unit: s. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerQueryTime(ts pcommon.Timestamp, value float64, dbNamespace string, pgbouncerDatabaseAlias string) {
-	mb.metricPgbouncerQueryTime.record(mb.startTime, ts, value, dbNamespace, pgbouncerDatabaseAlias)
+func (mb *MetricsBuilder) RecordPgbouncerQueryTime(ts pcommon.Timestamp, value float64, attrs PgbouncerQueryTimeAttributes) {
+	mb.metricPgbouncerQueryTime.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerServerAssignmentCount records one datapoint of pgbouncer.server.assignment.count.
@@ -1574,8 +1822,8 @@ func (mb *MetricsBuilder) RecordPgbouncerQueryTime(ts pcommon.Timestamp, value f
 // Client connections assigned a server connection since process start.
 //
 // Instrument: counter. Unit: {assignment}. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerServerAssignmentCount(ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string) {
-	mb.metricPgbouncerServerAssignmentCount.record(mb.startTime, ts, value, dbNamespace, pgbouncerDatabaseAlias)
+func (mb *MetricsBuilder) RecordPgbouncerServerAssignmentCount(ts pcommon.Timestamp, value int64, attrs PgbouncerServerAssignmentCountAttributes) {
+	mb.metricPgbouncerServerAssignmentCount.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerServerCount records one datapoint of pgbouncer.server.count.
@@ -1583,8 +1831,8 @@ func (mb *MetricsBuilder) RecordPgbouncerServerAssignmentCount(ts pcommon.Timest
 // Server slots, by state.
 //
 // Instrument: updowncounter. Unit: {server}. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerServerCount(ts pcommon.Timestamp, value int64, pgbouncerServerState string) {
-	mb.metricPgbouncerServerCount.record(mb.startTime, ts, value, pgbouncerServerState)
+func (mb *MetricsBuilder) RecordPgbouncerServerCount(ts pcommon.Timestamp, value int64, attrs PgbouncerServerCountAttributes) {
+	mb.metricPgbouncerServerCount.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerTransactionCount records one datapoint of pgbouncer.transaction.count.
@@ -1592,8 +1840,8 @@ func (mb *MetricsBuilder) RecordPgbouncerServerCount(ts pcommon.Timestamp, value
 // SQL transactions pooled by PgBouncer.
 //
 // Instrument: counter. Unit: {transaction}. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerTransactionCount(ts pcommon.Timestamp, value int64, dbNamespace string, pgbouncerDatabaseAlias string) {
-	mb.metricPgbouncerTransactionCount.record(mb.startTime, ts, value, dbNamespace, pgbouncerDatabaseAlias)
+func (mb *MetricsBuilder) RecordPgbouncerTransactionCount(ts pcommon.Timestamp, value int64, attrs PgbouncerTransactionCountAttributes) {
+	mb.metricPgbouncerTransactionCount.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerTransactionTime records one datapoint of pgbouncer.transaction.time.
@@ -1603,8 +1851,8 @@ func (mb *MetricsBuilder) RecordPgbouncerTransactionCount(ts pcommon.Timestamp, 
 // Includes time idle in transaction, so it exceeds `pgbouncer.query.time`. The gap between the two is the classic idle-in-transaction signal.
 //
 // Instrument: counter. Unit: s. Stability: development.
-func (mb *MetricsBuilder) RecordPgbouncerTransactionTime(ts pcommon.Timestamp, value float64, dbNamespace string, pgbouncerDatabaseAlias string) {
-	mb.metricPgbouncerTransactionTime.record(mb.startTime, ts, value, dbNamespace, pgbouncerDatabaseAlias)
+func (mb *MetricsBuilder) RecordPgbouncerTransactionTime(ts pcommon.Timestamp, value float64, attrs PgbouncerTransactionTimeAttributes) {
+	mb.metricPgbouncerTransactionTime.record(mb.startTime, ts, value, attrs)
 }
 
 // RecordPgbouncerUserConnectionMax records one datapoint of pgbouncer.user.connection.max.
