@@ -48,8 +48,10 @@ test-integration:
 telemetry-check:
 	@for r in receiver/*/telemetry/registry exporter/*/telemetry/registry; do \
 		[ -d "$$r" ] || continue; \
+		c="$$(dirname "$$(dirname "$$r")")"; \
 		echo "Checking $$r..."; \
 		./telemetry/weaver.sh check "$$r" || exit 1; \
+		go run ./internal/registrycheck/cmd/stability-disclosure "$$r" "$$c/telemetry/component.yaml" || exit 1; \
 	done
 	@echo "Proving the policies fire..."
 	@./telemetry/policies/run-fixtures.sh

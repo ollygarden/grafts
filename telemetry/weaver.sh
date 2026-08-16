@@ -124,6 +124,20 @@ generate)
 	# Jinja whitespace leaves blank lines that would fail CI's diff gate.
 	gofmt -w "${output}"
 	;;
+resolve)
+	# The resolved registry as JSON, for checks Rego cannot make.
+	#
+	# A Weaver policy only ever sees the registry, so anything comparing it to
+	# component.yaml -- the stability disclosure, above all -- has to happen out
+	# here with both files in hand.
+	registry="$(abs "${2:?$(usage)}")"
+	fetch_semconv
+	weaver "${registry}" \
+		"otel/weaver:${WEAVER_VERSION}" \
+		registry resolve --v2 \
+		--registry /registry/ \
+		--format json 2>/dev/null
+	;;
 diff)
 	baseline="$(abs "${2:?$(usage)}")"
 	registry="$(abs "${3:?$(usage)}")"
