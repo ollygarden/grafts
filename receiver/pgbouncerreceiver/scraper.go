@@ -116,7 +116,7 @@ func (s *scraper) scrape(ctx context.Context) (pmetric.Metrics, error) {
 		if err := promcompat.Append(md, telemetry.CompatTable, s.scopeName, s.scopeVersion); err != nil {
 			errs = append(errs, err)
 		} else {
-			s.recordNativeCompat(md, clients, dbRows)
+			s.recordNativeCompat(md, clients, dbRows, len(errs) == 0)
 		}
 	}
 
@@ -380,11 +380,36 @@ func (s *scraper) recordClients(now pcommon.Timestamp, rows []Row, databases map
 
 // recordNativeCompat writes the compat series that cannot be rebuilt from the
 // OTel output, because the OTel shape drops labels they carry.
-func (s *scraper) recordNativeCompat(md pmetric.Metrics, clients, databases []Row) {
+func (s *scraper) recordNativeCompat(md pmetric.Metrics, clients, databases []Row, complete bool) {
 	if md.ResourceMetrics().Len() == 0 {
 		return
 	}
 	dst := promcompat.Scope(md.ResourceMetrics().At(0), s.scopeName, s.scopeVersion)
+
+	// Alerting on `pgbouncer_up == 0` is close to universal, so the compat
+	// scope carries it rather than leaving those alerts silently broken.
+	//
+	// It is not an exact reproduction, and the difference matters: the upstream
+	// exporter always answers a scrape, so a completely unreachable PgBouncer
+	// still produces `pgbouncer_up 0`. This receiver emits nothing at all in
+	// that case, so the series goes stale instead of going to zero. Alert on
+	// absence as well as on zero, or move to the Collector's own receiver
+	// health signal.
+	up := int64(0)
+	if complete {
+		up = 1
+	}
+	promcompat.AppendNative(dst, "pgbouncer_up", "gauge", up, nil)
+
+	// pgbouncer_version_info has no OTel metric to derive from: the version is a
+	// resource attribute in the OTel shape, and target_info carries it there.
+	// A user's dashboards still refer to the series, so the compat scope keeps
+	// it under its own name.
+	if s.version != "" {
+		promcompat.AppendNative(dst, "pgbouncer_version_info", "gauge", 1, map[string]string{
+			"version": s.version,
+		})
+	}
 
 	// pgbouncer_client_connections keeps application_name.
 	type clientKey struct{ database, user, appName, state string }

@@ -64,12 +64,12 @@ func fixtureRows() map[Command][]Row {
 		},
 		CommandStats: {
 			{
-				"database": "seconddb",
+				"database":          "seconddb",
 				"total_query_count": "100", "total_xact_count": "40",
 				"total_server_assignment_count": "7",
-				"total_query_time": "2500000", "total_xact_time": "4000000",
+				"total_query_time":              "2500000", "total_xact_time": "4000000",
 				"total_wait_time": "1500000",
-				"total_received": "8192", "total_sent": "4096",
+				"total_received":  "8192", "total_sent": "4096",
 				"total_client_parse_count": "9", "total_server_parse_count": "3",
 				"total_bind_count": "12",
 			},

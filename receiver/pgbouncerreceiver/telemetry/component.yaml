@@ -31,23 +31,50 @@ fixture:
     digest: sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
 
 parity:
-  # Deliberately unset until the conformance harness produces a real number.
-  # The program's 90% default is a guess, and this component exists to replace
-  # it with a measurement. CI enforces the floor once it is set, and it never
-  # decreases.
-  floor: null
+  # Measured, not claimed: 44 of 44 upstream pgbouncer_* series reproduced with
+  # the same name, type and label keys, and no shape mismatches. This replaces
+  # the program's 90% default, which was a guess.
+  #
+  # The floor is 1.0 rather than a margin below it. The upstream image is pinned
+  # by digest, so the only way this can fall is a change of ours or a deliberate
+  # pin bump -- and in both cases the right outcome is a failed build that
+  # forces a decision, not a silent regression inside a tolerance band.
+  #
+  # The comparison is scoped to the `pgbouncer_` namespace. The exporter also
+  # mounts the Go runtime and process collectors, some forty series describing
+  # the exporter binary rather than PgBouncer; the Collector reports its own
+  # equivalents.
+  floor: 1.0
+  measured: 1.0
+  measured_at: 2026-08-16
+  namespace: pgbouncer_
+  report: parity-report.md
 
 dropped:
-  - metric: pgbouncer_up
-    reason: >
-      Scrape success is Collector self-telemetry, not telemetry about the
-      monitored system. Reported as pgbouncerreceiver.scrape.* and through
-      scrapererror partial-scrape handling. Re-emitted natively into the compat
-      scope so a cutting-over user's alerts keep working.
   - metric: pgbouncer_exporter_build_info
     reason: >
       Describes the upstream exporter binary, which this component replaces.
       There is no corresponding fact for us to report.
+
+compat_only:
+  # Series the compat scope carries that have no OTel metric to derive from.
+  - metric: pgbouncer_up
+    reason: >
+      Scrape success describes the Collector, not PgBouncer, so it is not an
+      OTel metric here -- it is reported as pgbouncerreceiver.scrape.errors.
+      Alerting on `pgbouncer_up == 0` is close to universal, though, so the
+      compat scope carries it.
+
+      Not an exact reproduction: the upstream exporter always answers a scrape,
+      so an unreachable PgBouncer still yields `pgbouncer_up 0`. This receiver
+      emits nothing at all in that case, so the series goes stale rather than
+      to zero. Documented in the README.
+  - metric: pgbouncer_version_info
+    reason: >
+      The version is a resource attribute in the OTel shape, `pgbouncer.version`,
+      and reaches Prometheus through target_info. Dashboards still refer to the
+      original series name, so the scraper writes it into the compat scope
+      directly.
 
 deviations:
   - id: two-sided-pool
