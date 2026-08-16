@@ -292,11 +292,11 @@ therefore the test case for that half of `internal/promcompat`.
 
 | Upstream | Disposition | OTel |
 | --- | --- | --- |
-| `pgbouncer_version_info` | resource | resource attribute `pgbouncer.version` |
-| `pgbouncer_up` | drop | Scrape success is Collector self-telemetry, not target telemetry. Reported as `pgbouncerreceiver.scrape.*` and by `scrapererror`. Re-emitted natively in the compat scope. |
+| `pgbouncer_version_info` | resource | Resource attribute `pgbouncer.version`, and `target_info`. The compat scope carries the original series natively, because dashboards refer to it by name. |
+| `pgbouncer_up` | compat-only | Scrape success describes the Collector, not PgBouncer, so it is not an OTel metric here — it is `pgbouncerreceiver.scrape.errors`. The compat scope carries it anyway, because alerting on it reaching zero is close to universal. Not an exact reproduction: the upstream exporter always answers a scrape, so an unreachable PgBouncer still yields zero, while this receiver emits nothing and the series goes stale. |
 | `pgbouncer_exporter_build_info` | drop | Describes the upstream exporter binary, which we are replacing. Nothing to report. |
 
-Counted for parity: 44 mapped, 2 dropped with reasons.
+Counted for parity: 45 reproduced, 1 dropped with a reason.
 
 ## The toolchain
 
@@ -326,13 +326,18 @@ Five Rego policies, each with a failing fixture:
 | Policy | Fails on |
 | --- | --- |
 | `no_deprecated_refs` | a `ref` to an upstream key marked `deprecated` |
-| `stability_disclosure` | a `development`-stability ref not listed in `component.yaml` |
+| `stability_disclosure` | a `development`-stability ref not listed in `component.yaml` — **not a Rego rule**, see below |
 | `local_prefix` | a local declaration outside the `<system>.` prefix |
 | `instrument_match` | a local metric shadowing an upstream convention it does not match on instrument type |
 | `prom_annotation` | an entry whose `annotations.prometheus` lacks `compat_source`, or claims `derived` when it cannot be |
 
 `no_deprecated_refs` is the one that closes a verified gap: `ref: db.user`
 resolves clean under `weaver registry check` despite being obsoleted.
+
+`stability_disclosure` cannot be a Rego rule. Weaver hands a policy the resolved
+registry and nothing else, while this check compares it against the component's
+`component.yaml`. It lives in `internal/registrycheck` instead, run by
+`make telemetry-check` after the Rego pass, against `weaver.sh resolve` output.
 
 ### Templates
 
@@ -373,8 +378,18 @@ postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
 The fixture mounts `pgbouncer.ini` with `security_opt: label=disable`, for the
 same reason `weaver.sh` uses it: `:z` relabels the checkout on the host.
 
-`parity.floor` is left unset until the harness produces a real number. The
-program's 90% default is a guess; the pilot exists to replace it.
+**Measured: 100%** — 45 of 45 upstream `pgbouncer_*` series reproduced with the
+same name, type and label keys, no shape mismatches, one declared drop.
+`parity.floor` is set to 1.0 from that measurement, replacing the program's 90%
+guess. The floor carries no tolerance band: the upstream image is pinned by
+digest, so the only way parity can fall is a change of ours or a deliberate pin
+bump, and both deserve a failed build rather than a silent slide.
+
+The comparison is scoped to the `pgbouncer_` namespace. An exporter mounts the
+Go runtime and process collectors beside its own metrics — forty-odd series
+describing the exporter binary, for which the Collector reports its own
+equivalents. Counting them as missing halved the first measurement for no
+reason, so `conformance.Options.Namespace` exists.
 
 ## Risks
 
@@ -395,6 +410,30 @@ Stage 9 re-review.
 **`definition/2` is not yet stable** in Weaver v0.25.1. trellis already accepts
 this bet; we inherit it.
 
+## Decisions taken during implementation
+
+**Generated `Record` methods take an attributes struct, not positional
+parameters.** Several metrics here carry five or more same-typed strings, and a
+transposed pair compiles cleanly and produces mislabelled datapoints. The
+scraper tests caught three such bugs before the change; named fields make them
+compile errors. Every later component inherits this.
+
+**Identifiers keep every segment of the metric name.** trellis's templates drop
+the root because one registry owns one prefix. A grafts registry is mostly refs
+to upstream, so dropping it collides `db.client.connection.count` with
+`pgbouncer.client.connection.count`.
+
+**The registry carries a datapoint-precise compat mapping.** Naming the upstream
+series was not enough to generate `promcompat` from: an entry now carries
+`labels`, mapping an attribute key to its Prometheus label, and `series` with a
+`when` that selects datapoints by attribute value. That is what makes a merge
+reversible rather than merely documented, and a policy rule checks those keys
+against the metric's own attributes.
+
+**`scrapererror` is not used.** It exists for `scraperhelper`, which this
+receiver does not use any more than `snmpreceiver` does. Partial scrapes are
+joined errors, counted in self-telemetry.
+
 ## Open questions for review
 
 1. The `cl_waiting` split — emitting the same number as both
@@ -404,7 +443,7 @@ this bet; we inherit it.
 2. Whether `pgbouncer.client.connection.detail.count` (the `SHOW CLIENTS`
    aggregate, minus `application_name`) earns its place at all, given it largely
    restates `pgbouncer.client.connection.count` from `SHOW POOLS` at a different
-   grain. Keeping it costs a series set; dropping it costs a parity point.
-3. Whether to expose `SHOW SERVERS` in the pilot. It is real surface the upstream
-   exporter lacks, but it is beyond parity and every row is per-connection —
-   the aggregation decision is not free. Recommendation: not in the pilot.
+   grain.
+3. Whether to expose `SHOW SERVERS` in a later iteration. It is real surface the
+   upstream exporter lacks, but every row is per-connection and the aggregation
+   decision is not free. Not in the pilot.

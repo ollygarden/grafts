@@ -34,6 +34,19 @@ receivers:
   #           type: gauge
   #           unit: cs
 
+  # PgBouncer receiver (uncomment and configure to use)
+  # pgbouncer:
+  #   endpoint: localhost:6432
+  #   username: pgbouncer
+  #   password: ${env:PGBOUNCER_PASSWORD}
+  #   # The role must be listed in PgBouncer's stats_users or admin_users;
+  #   # one in neither connects successfully and then sees nothing.
+  #   collection_interval: 60s
+  #   timeout: 10s
+  #   # Add "prometheus" to also emit the series pgbouncer_exporter produced,
+  #   # in their own instrumentation scope, while you cut dashboards over.
+  #   emit: [otel]
+
 exporters:
   debug:
     verbosity: detailed
