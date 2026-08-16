@@ -33,6 +33,38 @@ jobs:
       - name: Check go mod tidy
         run: make tidy && git diff --exit-code
 
+      # Validates every component registry, runs the Rego policies and the
+      # stability disclosure, and proves each policy still fires against its
+      # deliberately broken fixture. A policy nobody has seen fail is a policy
+      # nobody knows works.
+      - name: Check telemetry registries
+        run: make telemetry-check
+
+      # The generated telemetry is committed, so regenerate and fail on any
+      # difference: a registry change that was never generated would otherwise
+      # ship with the code and the parity report out of step. Staged, so a newly
+      # generated or orphaned file cannot pass unnoticed.
+      - name: Check generated telemetry is current
+        run: |
+          make telemetry-generate
+          git add -A
+          git diff --cached --exit-code
+
+      # Reports renamed, removed and added upstream keys against the base
+      # branch. Informational: semconv drift is a review input, not a build
+      # failure -- `telemetry-check` is what fails when a key stops resolving.
+      - name: Report semconv drift
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          git worktree add /tmp/base "origin/${{ github.base_ref }}"
+          for r in receiver/*/telemetry/registry; do
+            [ -d "/tmp/base/$r" ] || continue
+            echo "## $r"
+            ./telemetry/weaver.sh diff "/tmp/base/$r" "$r" || true
+          done
+
       - name: Build
         run: make build
 
