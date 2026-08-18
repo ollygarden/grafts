@@ -5,7 +5,7 @@ go 1.26.6
 require (
 	github.com/apache/arrow-go/v18 v18.6.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
-	github.com/gosnmp/gosnmp v1.43.2
+	github.com/gosnmp/gosnmp v1.44.0
 	github.com/nats-io/nats-server/v2 v2.14.1
 	github.com/nats-io/nats.go v1.52.0
 	github.com/stretchr/testify v1.11.1
