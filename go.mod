@@ -6,12 +6,14 @@ require (
 	github.com/apache/arrow-go/v18 v18.6.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/gosnmp/gosnmp v1.43.2
+	github.com/jackc/pgx/v5 v5.10.0
 	github.com/nats-io/nats-server/v2 v2.14.1
 	github.com/nats-io/nats.go v1.52.0
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.42.0
 	go.opentelemetry.io/collector/component v1.58.0
 	go.opentelemetry.io/collector/component/componenttest v0.151.0
+	go.opentelemetry.io/collector/config/configopaque v1.58.0
 	go.opentelemetry.io/collector/consumer v1.57.0
 	go.opentelemetry.io/collector/consumer/consumererror v0.151.0
 	go.opentelemetry.io/collector/consumer/consumertest v0.151.0
@@ -62,6 +64,8 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/go-version v1.9.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
@@ -102,7 +106,7 @@ require (
 	go.opentelemetry.io/collector/client v1.57.0 // indirect
 	go.opentelemetry.io/collector/config/configoptional v1.57.0 // indirect
 	go.opentelemetry.io/collector/config/configretry v1.57.0 // indirect
-	go.opentelemetry.io/collector/confmap v1.57.0 // indirect
+	go.opentelemetry.io/collector/confmap v1.58.0 // indirect
 	go.opentelemetry.io/collector/confmap/xconfmap v0.151.0 // indirect
 	go.opentelemetry.io/collector/consumer/xconsumer v0.151.0 // indirect
 	go.opentelemetry.io/collector/exporter/xexporter v0.151.0 // indirect

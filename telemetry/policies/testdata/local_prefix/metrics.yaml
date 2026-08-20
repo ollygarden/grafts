@@ -1,0 +1,15 @@
+file_format: definition/2
+
+metrics:
+  - name: db.client.invented.count
+    instrument: updowncounter
+    unit: "1"
+    stability: development
+    requirement_level: recommended
+    brief: "Declared under `db.*`, a namespace upstream owns and this registry did not import."
+    annotations:
+      prometheus:
+        series:
+          - name: fixture_local_prefix
+        disposition: map
+        compat_source: derived

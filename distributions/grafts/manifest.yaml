@@ -19,6 +19,11 @@ receivers:
     import: go.olly.garden/grafts/receiver/snmpreceiver
     path: ../..
 
+  # PgBouncer receiver (from main module)
+  - gomod: go.olly.garden/grafts v0.1.0
+    import: go.olly.garden/grafts/receiver/pgbouncerreceiver
+    path: ../..
+
 processors:
   # Essential processors
   - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.151.0

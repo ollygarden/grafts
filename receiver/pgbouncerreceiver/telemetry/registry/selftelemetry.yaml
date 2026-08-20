@@ -1,0 +1,77 @@
+file_format: definition/2
+
+# The receiver's own operation, under the component prefix. Kept in the same
+# registry as the scraped telemetry so `weaver registry check` is a complete
+# gate: a receiver cannot quietly grow an undeclared instrument on either side.
+#
+# These have no Prometheus counterpart -- the upstream exporter's own
+# `pgbouncer_up` and `pgbouncer_exporter_build_info` describe a binary we
+# replace -- so they carry no `annotations.prometheus`.
+
+attributes:
+  - key: pgbouncerreceiver.command
+    type:
+      members:
+        - id: show_stats
+          value: "SHOW STATS"
+          stability: development
+        - id: show_pools
+          value: "SHOW POOLS"
+          stability: development
+        - id: show_databases
+          value: "SHOW DATABASES"
+          stability: development
+        - id: show_lists
+          value: "SHOW LISTS"
+          stability: development
+        - id: show_clients
+          value: "SHOW CLIENTS"
+          stability: development
+        - id: show_config
+          value: "SHOW CONFIG"
+          stability: development
+        - id: show_version
+          value: "SHOW VERSION"
+          stability: development
+    stability: development
+    brief: "The PgBouncer admin command a scrape step issued."
+    note: >
+      A closed set fixed by the receiver, so it is bounded regardless of what
+      the monitored instance is configured with. Never carries a value read off
+      the target.
+    examples: ['SHOW POOLS']
+
+metrics:
+  - name: pgbouncerreceiver.scrape.duration
+    instrument: histogram
+    unit: "s"
+    stability: development
+    requirement_level: recommended
+    brief: "Time taken by a full scrape of the PgBouncer admin console."
+    note: >
+      One observation per collection interval, covering every command. Per
+      command timing is not reported: it would multiply the series set by the
+      command count for a number only useful while debugging.
+    annotations:
+      code_generation:
+        metric_value_type: double
+
+  - name: pgbouncerreceiver.scrape.errors
+    instrument: counter
+    unit: "{error}"
+    stability: development
+    requirement_level: recommended
+    brief: "Scrape steps that failed."
+    note: >
+      A scrape is partial rather than all-or-nothing -- the receiver reports
+      what it got and records the failures here, matching the behaviour users
+      depend on from the upstream exporter. `error.type` classifies the
+      failure; it never carries a message read off the connection.
+    attributes:
+      - ref: error.type
+        requirement_level: required
+      - ref: pgbouncerreceiver.command
+        requirement_level: required
+    annotations:
+      code_generation:
+        metric_value_type: int

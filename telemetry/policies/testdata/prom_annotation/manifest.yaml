@@ -1,0 +1,7 @@
+schema_url: https://olly.garden/schemas/grafts/fixturereceiver/0.1.0
+description: >
+  Fixture proving `prom_annotation` fires: `derived` claimed while dropping a label, and an entry with no annotation block at all.
+stability: development
+dependencies:
+  - schema_url: https://opentelemetry.io/schemas/1.44.0
+    registry_path: /semconv/

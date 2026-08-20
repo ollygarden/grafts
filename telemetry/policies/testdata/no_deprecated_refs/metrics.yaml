@@ -1,0 +1,18 @@
+file_format: definition/2
+
+metrics:
+  - name: fixture.deprecated.ref
+    instrument: counter
+    unit: "1"
+    stability: development
+    requirement_level: recommended
+    brief: "References an upstream key deprecated as obsoleted."
+    attributes:
+      - ref: db.user
+        requirement_level: required
+    annotations:
+      prometheus:
+        series:
+          - name: fixture_deprecated_ref
+        disposition: map
+        compat_source: derived

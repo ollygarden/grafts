@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: testdb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt:
+      - label=disable
+    volumes:
+      - ./pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    ports:
+      - "16432:6432"
+  exporter:
+    image: quay.io/prometheuscommunity/pgbouncer-exporter:v0.12.1
+    depends_on: [pgbouncer]
+    command:
+      - --pgBouncer.connectionString=postgres://pgbouncer:pgbouncer@pgbouncer:6432/pgbouncer?sslmode=disable
+    ports:
+      - "19127:9127"

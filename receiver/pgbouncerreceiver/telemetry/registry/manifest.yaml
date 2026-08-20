@@ -1,0 +1,8 @@
+schema_url: https://olly.garden/schemas/grafts/pgbouncerreceiver/0.1.0
+description: >
+  Telemetry emitted by the grafts PgBouncer receiver: metrics scraped from the
+  monitored PgBouncer instance, and the receiver's own self-telemetry.
+stability: development
+dependencies:
+  - schema_url: https://opentelemetry.io/schemas/1.44.0
+    registry_path: /semconv/

@@ -1,0 +1,26 @@
+file_format: definition/2
+
+metrics:
+  # `derived` promises the compat series is a pure function of the OTel output,
+  # which a dropped label makes impossible.
+  - name: fixture.derived_but_dropping.count
+    instrument: updowncounter
+    unit: "1"
+    stability: development
+    requirement_level: recommended
+    brief: "Claims `derived` while dropping a label the compat series needs."
+    annotations:
+      prometheus:
+        series:
+          - name: fixture_derived_but_dropping
+        disposition: map
+        compat_source: derived
+        dropped_labels:
+          - application_name
+
+  - name: fixture.unannotated.count
+    instrument: updowncounter
+    unit: "1"
+    stability: development
+    requirement_level: recommended
+    brief: "Carries no `annotations.prometheus` block, so the parity report cannot see it."
