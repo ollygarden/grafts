@@ -4,7 +4,10 @@ package trapper
 
 import (
 	"context"
+	"crypto/subtle"
+	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -14,16 +17,23 @@ import (
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 
+	"go.olly.garden/grafts/receiver/snmpreceiver/internal/connection"
 	"go.olly.garden/grafts/receiver/snmpreceiver/internal/logs"
 )
 
 const snmpTrapOIDMIB = "1.3.6.1.6.3.1.1.4.1.0"
 
 // AuthEntry holds authentication credentials for a single auth profile.
+// A "v2c" entry accepts SNMPv1 and SNMPv2c traps carrying its community; a
+// "v3" entry accepts SNMPv3 traps from its USM user at its security level.
 type AuthEntry struct {
-	Version   string // "v2c" or "v3"
-	Community string
-	Username  string
+	Version           string // "v2c" or "v3"
+	Community         string
+	Username          string
+	AuthProtocol      string
+	AuthPassphrase    string
+	PrivacyProtocol   string
+	PrivacyPassphrase string
 }
 
 // Trapper listens for incoming SNMP traps on a UDP address and forwards them
@@ -31,7 +41,9 @@ type AuthEntry struct {
 type Trapper struct {
 	logger       *zap.Logger
 	listenAddr   string
-	acceptedAuth []AuthEntry
+	communities  [][]byte
+	acceptAll    bool
+	params       *gosnmp.GoSNMP
 	consumer     consumer.Logs
 	obsrecv      *receiverhelper.ObsReport
 	mu           sync.Mutex
@@ -39,15 +51,40 @@ type Trapper struct {
 }
 
 // New creates a new Trapper. obsrecv records receiver-level throughput and
-// refusal metrics around the consume boundary.
-func New(logger *zap.Logger, listenAddr string, acceptedAuth []AuthEntry, consumer consumer.Logs, obsrecv *receiverhelper.ObsReport) *Trapper {
-	return &Trapper{
-		logger:       logger,
-		listenAddr:   listenAddr,
-		acceptedAuth: acceptedAuth,
-		consumer:     consumer,
-		obsrecv:      obsrecv,
+// refusal metrics around the consume boundary. With no acceptedAuth entries,
+// every SNMPv1/v2c trap is accepted; SNMPv3 traps always require a matching
+// "v3" entry because gosnmp needs the user's keys to verify them.
+func New(logger *zap.Logger, listenAddr string, acceptedAuth []AuthEntry, consumer consumer.Logs, obsrecv *receiverhelper.ObsReport) (*Trapper, error) {
+	tr := &Trapper{
+		logger:     logger,
+		listenAddr: listenAddr,
+		acceptAll:  len(acceptedAuth) == 0,
+		consumer:   consumer,
+		obsrecv:    obsrecv,
 	}
+
+	// gosnmp authenticates and decrypts SNMPv3 traps against this table; an
+	// empty table makes it drop every SNMPv3 trap.
+	usmTable := gosnmp.NewSnmpV3SecurityParametersTable(gosnmp.Logger{})
+	for _, entry := range acceptedAuth {
+		switch entry.Version {
+		case "v2c":
+			tr.communities = append(tr.communities, []byte(entry.Community))
+		case "v3":
+			usm, _ := connection.USM(entry.Username, entry.AuthProtocol, entry.AuthPassphrase, entry.PrivacyProtocol, entry.PrivacyPassphrase)
+			if err := usmTable.Add(entry.Username, usm); err != nil {
+				return nil, fmt.Errorf("SNMPv3 user %q: %w", entry.Username, err)
+			}
+		}
+	}
+	if tr.acceptAll {
+		logger.Warn("SNMP trap listener has no accepted_auth: every SNMPv1/v2c trap is accepted regardless of community, and SNMPv3 traps are dropped; configure accepted_auth to authenticate traps")
+	}
+	tr.params = &gosnmp.GoSNMP{
+		Version:                     gosnmp.Version3,
+		TrapSecurityParametersTable: usmTable,
+	}
+	return tr, nil
 }
 
 // ListenAddr returns the resolved listen address, available after Run starts.
@@ -61,7 +98,7 @@ func (tr *Trapper) ListenAddr() string {
 func (tr *Trapper) Run(ctx context.Context) {
 	listener := gosnmp.NewTrapListener()
 	listener.OnNewTrap = tr.handleTrap
-	listener.Params = gosnmp.Default
+	listener.Params = tr.params
 
 	done := make(chan struct{})
 	go func() {
@@ -137,7 +174,6 @@ func (tr *Trapper) handleTrap(packet *gosnmp.SnmpPacket, addr *net.UDPAddr) {
 		SourceIP:   addr.IP.String(),
 		SourcePort: addr.Port,
 		Version:    version,
-		Community:  packet.Community,
 		TrapOID:    trapOID,
 		Uptime:     uptime,
 		Varbinds:   varbinds,
@@ -154,25 +190,33 @@ func (tr *Trapper) handleTrap(packet *gosnmp.SnmpPacket, addr *net.UDPAddr) {
 }
 
 // isAuthorized checks whether the packet matches any accepted auth entry.
+// SNMPv3 packets reach this point only after gosnmp has matched a configured
+// user and verified the packet at the security level it claims, so the
+// remaining check is that the claimed level is not below that user's level.
 func (tr *Trapper) isAuthorized(packet *gosnmp.SnmpPacket) bool {
-	// If no auth entries are configured, accept all.
-	if len(tr.acceptedAuth) == 0 {
-		return true
+	if packet.Version == gosnmp.Version3 {
+		// gosnmp leaves the matched user's configured protocols on the packet.
+		usm, ok := packet.SecurityParameters.(*gosnmp.UsmSecurityParameters)
+		if !ok {
+			return false
+		}
+		want := gosnmp.NoAuthNoPriv
+		if usm.AuthenticationProtocol > gosnmp.NoAuth {
+			want = gosnmp.AuthNoPriv
+		}
+		if usm.PrivacyProtocol > gosnmp.NoPriv {
+			want = gosnmp.AuthPriv
+		}
+		// Compare bits rather than ordering: the invalid priv-without-auth
+		// flag value must not satisfy an authNoPriv user.
+		return packet.MsgFlags&want == want
 	}
 
-	for _, entry := range tr.acceptedAuth {
-		switch entry.Version {
-		case "v2c":
-			if packet.Community == entry.Community {
-				return true
-			}
-		case "v3":
-			if usm, ok := packet.SecurityParameters.(*gosnmp.UsmSecurityParameters); ok {
-				if usm.UserName == entry.Username {
-					return true
-				}
-			}
-		}
+	if tr.acceptAll {
+		return true
 	}
-	return false
+	community := []byte(packet.Community)
+	return slices.ContainsFunc(tr.communities, func(c []byte) bool {
+		return subtle.ConstantTimeCompare(community, c) == 1
+	})
 }

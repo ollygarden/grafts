@@ -60,6 +60,14 @@ func (r *snmpReceiver) registerLogsConsumer(lc consumer.Logs) {
 
 // Start begins the SNMP receiver.
 func (r *snmpReceiver) Start(ctx context.Context, _ component.Host) error {
+	var tr *trapper.Trapper
+	if r.nextLogs != nil && r.config.TrapListener != nil {
+		var err error
+		if tr, err = r.newTrapper(); err != nil {
+			return fmt.Errorf("failed to create trap listener: %w", err)
+		}
+	}
+
 	loopCtx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
 
@@ -85,17 +93,7 @@ func (r *snmpReceiver) Start(ctx context.Context, _ component.Host) error {
 			zap.Duration("interval", r.config.CollectionInterval))
 	}
 
-	if r.nextLogs != nil && r.config.TrapListener != nil {
-		var authEntries []trapper.AuthEntry
-		for _, authName := range r.config.TrapListener.AcceptedAuth {
-			auth := r.config.Auth[authName]
-			authEntries = append(authEntries, trapper.AuthEntry{
-				Version:   auth.Version,
-				Community: auth.Community,
-				Username:  auth.Username,
-			})
-		}
-		tr := trapper.New(r.settings.Logger, r.config.TrapListener.ListenAddress, authEntries, r.nextLogs, r.obsrecv)
+	if tr != nil {
 		r.shutdownWG.Add(1)
 		go func() {
 			defer r.shutdownWG.Done()
@@ -106,6 +104,24 @@ func (r *snmpReceiver) Start(ctx context.Context, _ component.Host) error {
 	}
 
 	return nil
+}
+
+// newTrapper builds the trap listener from the accepted_auth configuration.
+func (r *snmpReceiver) newTrapper() (*trapper.Trapper, error) {
+	var authEntries []trapper.AuthEntry
+	for _, authName := range r.config.TrapListener.AcceptedAuth {
+		auth := r.config.Auth[authName]
+		authEntries = append(authEntries, trapper.AuthEntry{
+			Version:           auth.Version,
+			Community:         auth.Community,
+			Username:          auth.Username,
+			AuthProtocol:      auth.AuthProtocol,
+			AuthPassphrase:    auth.AuthPassphrase,
+			PrivacyProtocol:   auth.PrivacyProtocol,
+			PrivacyPassphrase: auth.PrivacyPassphrase,
+		})
+	}
+	return trapper.New(r.settings.Logger, r.config.TrapListener.ListenAddress, authEntries, r.nextLogs, r.obsrecv)
 }
 
 // Shutdown gracefully shuts down the receiver.

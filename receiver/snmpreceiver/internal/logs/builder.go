@@ -16,7 +16,6 @@ type TrapData struct {
 	SourceIP   string
 	SourcePort int
 	Version    string // "v1", "v2c", "v3"
-	Community  string
 	TrapOID    string
 	Uptime     int64
 	Varbinds   map[string]interface{}
@@ -63,10 +62,6 @@ func BuildLog(trap TrapData) plog.Logs {
 	attrs := lr.Attributes()
 	attrs.PutStr("snmp.trap.oid", trap.TrapOID)
 	attrs.PutStr("snmp.trap.version", trap.Version)
-
-	if trap.Community != "" {
-		attrs.PutStr("snmp.trap.community", trap.Community)
-	}
 
 	if trap.Uptime > 0 {
 		attrs.PutInt("snmp.trap.uptime", trap.Uptime)

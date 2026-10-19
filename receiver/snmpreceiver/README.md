@@ -181,10 +181,21 @@ When `trap_listener` is configured and the receiver is included in a logs pipeli
 
 - **Severity**: Mapped from well-known trap OIDs (`coldStart` = Info, `linkDown` = Warn, `authenticationFailure` = Error). Unknown traps default to Warn.
 - **Body**: `"SNMP Trap: <trap OID>"`
-- **Attributes**: `snmp.trap.oid`, `snmp.trap.type` (if well-known), `snmp.trap.version`, `snmp.trap.community`, `snmp.trap.uptime`, plus all varbinds as `snmp.varbind.<oid>`.
+- **Attributes**: `snmp.trap.oid`, `snmp.trap.type` (if well-known), `snmp.trap.version` (`v1`, `v2c`, or `v3`), `snmp.trap.uptime`, plus all varbinds as `snmp.varbind.<oid>`. The community string is never emitted.
 - **Resource**: `snmp.host` and `snmp.port` from the trap sender's IP/port.
 
-SNMPv1 traps are accepted and normalized to v2c format.
+#### Trap authentication
+
+`accepted_auth` lists the auth configs a trap must match:
+
+- A `v2c` auth config accepts SNMPv1 and SNMPv2c traps whose community equals its `community`.
+- A `v3` auth config accepts SNMPv3 traps from its `username`. The receiver verifies the message with the configured `auth_protocol`/`auth_passphrase`, decrypts it with the configured `privacy_protocol`/`privacy_passphrase`, and drops traps sent at a lower security level than the auth config defines (for example, an unauthenticated trap for an `AuthPriv` user). Keys are localized to the sending device's engine ID, so one auth config covers every device that shares the user's credentials.
+
+Traps that match no entry are dropped with a warning that names the sender's address.
+
+> **Warning:** when `accepted_auth` is empty or omitted, the listener accepts every SNMPv1/v2c trap regardless of community and logs a warning at startup. SNMPv3 traps are always dropped in that mode because they cannot be verified without a configured user. Configure `accepted_auth` for any listener reachable from untrusted networks.
+
+The listener does not answer SNMPv3 engine ID discovery, so SNMPv3 informs work only when the sender is configured with the engine ID it should use.
 
 ## Example Configurations
 
@@ -327,7 +338,7 @@ Each trap produces a `LogRecord` with:
 |---|---|
 | Target unreachable on poll | Log warning, skip this cycle, retry next interval |
 | Single OID walk fails | Log error, continue with remaining metric groups |
-| Trap auth rejected | Log warning with source IP, drop the trap |
+| Trap auth rejected (unknown community or user, failed SNMPv3 authentication or decryption, security-level downgrade) | Drop the trap; community and user mismatches log a warning with the source address |
 | Trap parse failure | Log error, drop the trap |
 | Consumer error | Log warning, data is lost (SNMP is best-effort) |
 

@@ -11,6 +11,9 @@ import (
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/receiver/receivertest"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func allocateUDPPort(t *testing.T) string {
@@ -63,4 +66,23 @@ func TestReceiverMetricsOnlyNoTrapListener(t *testing.T) {
 
 	assert.NotNil(t, recv.nextMetrics)
 	assert.Nil(t, recv.nextLogs)
+}
+
+func TestReceiverWarnsOnEmptyAcceptedAuth(t *testing.T) {
+	t.Cleanup(func() { store.receivers = make(map[component.ID]*sharedReceiver) })
+
+	factory := NewFactory()
+	cfg := createDefaultConfig().(*Config)
+	cfg.TrapListener = &TrapListenerConfig{ListenAddress: allocateUDPPort(t)}
+
+	core, observed := observer.New(zapcore.WarnLevel)
+	settings := receivertest.NewNopSettings(factory.Type())
+	settings.Logger = zap.New(core)
+	logsReceiver, err := factory.CreateLogs(context.Background(), settings, cfg, consumertest.NewNop())
+	require.NoError(t, err)
+
+	require.NoError(t, logsReceiver.Start(context.Background(), componenttest.NewNopHost()))
+	require.NoError(t, logsReceiver.Shutdown(context.Background()))
+
+	assert.Equal(t, 1, observed.FilterMessageSnippet("no accepted_auth").Len())
 }

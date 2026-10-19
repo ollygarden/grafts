@@ -77,23 +77,7 @@ func NewConnection(params Params) (Connection, error) {
 	case V3:
 		client.Version = gosnmp.Version3
 		client.SecurityModel = gosnmp.UserSecurityModel
-		authProto := mapAuthProtocol(params.AuthProtocol)
-		privProto := mapPrivacyProtocol(params.PrivacyProtocol)
-		switch {
-		case authProto != gosnmp.NoAuth && privProto != gosnmp.NoPriv:
-			client.MsgFlags = gosnmp.AuthPriv
-		case authProto != gosnmp.NoAuth:
-			client.MsgFlags = gosnmp.AuthNoPriv
-		default:
-			client.MsgFlags = gosnmp.NoAuthNoPriv
-		}
-		client.SecurityParameters = &gosnmp.UsmSecurityParameters{
-			UserName:                 params.Username,
-			AuthenticationProtocol:   authProto,
-			AuthenticationPassphrase: params.AuthPassphrase,
-			PrivacyProtocol:          privProto,
-			PrivacyPassphrase:        params.PrivacyPassphrase,
-		}
+		client.SecurityParameters, client.MsgFlags = USM(params.Username, params.AuthProtocol, params.AuthPassphrase, params.PrivacyProtocol, params.PrivacyPassphrase)
 	default: // V2c and anything else defaults to V2c
 		client.Version = gosnmp.Version2c
 		client.Community = params.Community
@@ -160,6 +144,27 @@ func (w *GosnmpWrapper) Close() error {
 		return w.client.Conn.Close()
 	}
 	return nil
+}
+
+// USM builds SNMPv3 USM security parameters from configuration strings and
+// returns them with the message security level they imply.
+func USM(username, authProtocol, authPassphrase, privacyProtocol, privacyPassphrase string) (*gosnmp.UsmSecurityParameters, gosnmp.SnmpV3MsgFlags) {
+	authProto := mapAuthProtocol(authProtocol)
+	privProto := mapPrivacyProtocol(privacyProtocol)
+	flags := gosnmp.NoAuthNoPriv
+	switch {
+	case authProto != gosnmp.NoAuth && privProto != gosnmp.NoPriv:
+		flags = gosnmp.AuthPriv
+	case authProto != gosnmp.NoAuth:
+		flags = gosnmp.AuthNoPriv
+	}
+	return &gosnmp.UsmSecurityParameters{
+		UserName:                 username,
+		AuthenticationProtocol:   authProto,
+		AuthenticationPassphrase: authPassphrase,
+		PrivacyProtocol:          privProto,
+		PrivacyPassphrase:        privacyPassphrase,
+	}, flags
 }
 
 // mapAuthProtocol maps a string auth protocol name to a gosnmp SnmpV3AuthProtocol.
