@@ -191,7 +191,7 @@ When `trap_listener` is configured and the receiver is included in a logs pipeli
 - A `v2c` auth config accepts SNMPv1 and SNMPv2c traps whose community equals its `community`.
 - A `v3` auth config accepts SNMPv3 traps from its `username`. The receiver verifies the message with the configured `auth_protocol`/`auth_passphrase`, decrypts it with the configured `privacy_protocol`/`privacy_passphrase`, and drops traps sent at a lower security level than the auth config defines (for example, an unauthenticated trap for an `AuthPriv` user). Keys are localized to the sending device's engine ID, so one auth config covers every device that shares the user's credentials.
 
-Traps that match no entry are dropped with a warning that names the sender's address.
+Rejected traps are dropped. An unknown community or an SNMPv3 security-level downgrade logs a warning that names the sender's address; SNMPv3 traps from unknown users or that fail authentication or decryption are dropped by the SNMP library without a log.
 
 > **Warning:** when `accepted_auth` is empty or omitted, the listener accepts every SNMPv1/v2c trap regardless of community and logs a warning at startup. SNMPv3 traps are always dropped in that mode because they cannot be verified without a configured user. Configure `accepted_auth` for any listener reachable from untrusted networks.
 
@@ -338,7 +338,8 @@ Each trap produces a `LogRecord` with:
 |---|---|
 | Target unreachable on poll | Log warning, skip this cycle, retry next interval |
 | Single OID walk fails | Log error, continue with remaining metric groups |
-| Trap auth rejected (unknown community or user, failed SNMPv3 authentication or decryption, security-level downgrade) | Drop the trap; community and user mismatches log a warning with the source address |
+| Trap auth rejected: unknown community or SNMPv3 security-level downgrade | Log warning with source address, drop the trap |
+| Trap auth rejected: unknown SNMPv3 user, failed authentication or decryption | Drop the trap without a log |
 | Trap parse failure | Log error, drop the trap |
 | Consumer error | Log warning, data is lost (SNMP is best-effort) |
 
