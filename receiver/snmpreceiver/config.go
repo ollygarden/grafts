@@ -120,6 +120,14 @@ func (cfg *Config) Validate() error {
 			if auth.PrivacyProtocol != "" && auth.AuthProtocol == "" {
 				return fmt.Errorf("auth %q: auth_protocol is required when privacy_protocol is set", name)
 			}
+			// RFC 3414 section 11.2 requires USM passwords of at least 8 octets;
+			// gosnmp silently derives an empty key from an empty passphrase.
+			if auth.AuthProtocol != "" && len(auth.AuthPassphrase) < minPassphraseLength {
+				return fmt.Errorf("auth %q: auth_passphrase must be at least %d characters when auth_protocol is set", name, minPassphraseLength)
+			}
+			if auth.PrivacyProtocol != "" && len(auth.PrivacyPassphrase) < minPassphraseLength {
+				return fmt.Errorf("auth %q: privacy_passphrase must be at least %d characters when privacy_protocol is set", name, minPassphraseLength)
+			}
 		}
 	}
 
@@ -175,15 +183,29 @@ func (cfg *Config) Validate() error {
 		if cfg.TrapListener.ListenAddress == "" {
 			return errors.New("trap_listener: listen_address is required")
 		}
+		v3Users := map[string]string{}
 		for _, authName := range cfg.TrapListener.AcceptedAuth {
-			if _, ok := cfg.Auth[authName]; !ok {
+			auth, ok := cfg.Auth[authName]
+			if !ok {
 				return fmt.Errorf("trap_listener: accepted_auth %q not found in auth configs", authName)
 			}
+			if auth.Version != "v3" {
+				continue
+			}
+			// gosnmp accepts a trap matching any credential set for its username,
+			// so a weaker set would admit traps a stricter set for the same user
+			// is meant to reject.
+			if other, dup := v3Users[auth.Username]; dup {
+				return fmt.Errorf("trap_listener: accepted_auth %q and %q share SNMPv3 username %q", other, authName, auth.Username)
+			}
+			v3Users[auth.Username] = authName
 		}
 	}
 
 	return nil
 }
+
+const minPassphraseLength = 8
 
 var validAuthProtocols = map[string]bool{
 	"MD5": true, "SHA": true, "SHA256": true, "SHA384": true, "SHA512": true,

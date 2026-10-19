@@ -1,9 +1,11 @@
 package trapper
 
 import (
+	"bytes"
 	"context"
-	"fmt"
+	"encoding/asn1"
 	"net"
+	"strconv"
 	"testing"
 	"time"
 
@@ -78,21 +80,20 @@ func v3Sender(user string, authProto gosnmp.SnmpV3AuthProtocol, authPass string,
 	}
 }
 
-// sendTrap sends a trap carrying trapOID to addr over real UDP.
-func sendTrap(t *testing.T, addr string, s sender, trapOID string) {
+// dial connects a gosnmp client for s to addr.
+func dial(t *testing.T, addr string, s sender, timeout time.Duration) *gosnmp.GoSNMP {
 	t.Helper()
 	host, portStr, err := net.SplitHostPort(addr)
 	require.NoError(t, err)
-	var port uint16
-	_, err = fmt.Sscanf(portStr, "%d", &port)
+	port, err := strconv.ParseUint(portStr, 10, 16)
 	require.NoError(t, err)
 
 	g := &gosnmp.GoSNMP{
 		Target:    host,
-		Port:      port,
+		Port:      uint16(port),
 		Version:   s.version,
 		Community: s.community,
-		Timeout:   time.Second,
+		Timeout:   timeout,
 	}
 	if s.version == gosnmp.Version3 {
 		g.SecurityModel = gosnmp.UserSecurityModel
@@ -100,8 +101,14 @@ func sendTrap(t *testing.T, addr string, s sender, trapOID string) {
 		g.SecurityParameters = s.usm
 	}
 	require.NoError(t, g.Connect())
-	defer func() { _ = g.Conn.Close() }()
+	t.Cleanup(func() { _ = g.Conn.Close() })
+	return g
+}
 
+// sendTrap sends a trap carrying trapOID to addr over real UDP.
+func sendTrap(t *testing.T, addr string, s sender, trapOID string) {
+	t.Helper()
+	g := dial(t, addr, s, time.Second)
 	trap := gosnmp.SnmpTrap{
 		Variables: []gosnmp.SnmpPDU{
 			{Name: "1.3.6.1.2.1.1.3.0", Type: gosnmp.TimeTicks, Value: uint32(123456)},
@@ -119,8 +126,81 @@ func sendTrap(t *testing.T, addr string, s sender, trapOID string) {
 			},
 		}
 	}
-	_, err = g.SendTrap(trap)
+	_, err := g.SendTrap(trap)
 	require.NoError(t, err)
+}
+
+// captureTrap returns the bytes a sender puts on the wire for a coldStart trap.
+func captureTrap(t *testing.T, s sender) []byte {
+	t.Helper()
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+
+	sendTrap(t, conn.LocalAddr().String(), s, coldStartOID)
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+	buf := make([]byte, maxMessageSize)
+	n, _, err := conn.ReadFromUDP(buf)
+	require.NoError(t, err)
+	return buf[:n]
+}
+
+// sendInform sends a v2c inform and returns the error from waiting for its
+// acknowledgement.
+func sendInform(t *testing.T, addr, community string) error {
+	t.Helper()
+	_, err := dial(t, addr, v2cSender(community), 300*time.Millisecond).SendTrap(gosnmp.SnmpTrap{
+		IsInform: true,
+		Variables: []gosnmp.SnmpPDU{
+			{Name: snmpTrapOIDMIB, Type: gosnmp.ObjectIdentifier, Value: coldStartOID},
+		},
+	})
+	return err
+}
+
+func tlv(class, tag int, compound bool, children ...[]byte) []byte {
+	b, err := asn1.Marshal(asn1.RawValue{Class: class, Tag: tag, IsCompound: compound, Bytes: bytes.Join(children, nil)})
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+func seq(children ...[]byte) []byte {
+	return tlv(asn1.ClassUniversal, asn1.TagSequence, true, children...)
+}
+
+func octets(s string) []byte { return tlv(asn1.ClassUniversal, asn1.TagOctetString, false, []byte(s)) }
+
+func integer(v int) []byte { return tlv(asn1.ClassUniversal, asn1.TagInteger, false, []byte{byte(v)}) }
+
+func oid(o ...int) []byte {
+	b, err := asn1.Marshal(asn1.ObjectIdentifier(o))
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+// rawV3Trap hand-encodes an SNMPv3 coldStart trap so tests can set header
+// fields gosnmp's encoder never produces. Values passed to integer must fit
+// in one positive byte.
+func rawV3Trap(user string, flags byte, securityModel int, authParams string, withScopedPDU bool) []byte {
+	usm := seq(octets(senderEngineID), integer(1), integer(1), octets(user), octets(authParams), octets(""))
+	parts := [][]byte{
+		integer(3),
+		seq(integer(1), tlv(asn1.ClassUniversal, asn1.TagInteger, false, []byte{0x00, 0xff, 0xe3}), octets(string([]byte{flags})), integer(securityModel)),
+		octets(string(usm)),
+	}
+	if withScopedPDU {
+		varbinds := seq(
+			seq(oid(1, 3, 6, 1, 2, 1, 1, 3, 0), tlv(asn1.ClassApplication, 3, false, []byte{1})),
+			seq(oid(1, 3, 6, 1, 6, 3, 1, 1, 4, 1, 0), oid(1, 3, 6, 1, 6, 3, 1, 1, 5, 1)),
+		)
+		pdu := tlv(asn1.ClassContextSpecific, 7, true, integer(1), integer(0), integer(0), varbinds)
+		parts = append(parts, seq(octets(senderEngineID), octets(""), pdu))
+	}
+	return seq(parts...)
 }
 
 // startTrapper runs a trapper on a free local UDP port until the test ends.
@@ -303,16 +383,70 @@ func TestTrapperEmptyAcceptedAuth(t *testing.T) {
 	assert.ElementsMatch(t, []string{"v2c", "v1"}, got)
 }
 
-func TestIsAuthorizedRejectsPrivWithoutAuthFlags(t *testing.T) {
+func TestIsAuthorizedV3HeaderChecks(t *testing.T) {
 	tr := &Trapper{}
-
-	packet := &gosnmp.SnmpPacket{
-		Version:            gosnmp.Version3,
-		MsgFlags:           gosnmp.AuthPriv &^ gosnmp.AuthNoPriv,
-		SecurityParameters: &gosnmp.UsmSecurityParameters{UserName: "authuser", AuthenticationProtocol: gosnmp.SHA},
+	newPacket := func(flags gosnmp.SnmpV3MsgFlags, model gosnmp.SnmpV3SecurityModel, privProto gosnmp.SnmpV3PrivProtocol) *gosnmp.SnmpPacket {
+		return &gosnmp.SnmpPacket{
+			Version:       gosnmp.Version3,
+			MsgFlags:      flags,
+			SecurityModel: model,
+			SecurityParameters: &gosnmp.UsmSecurityParameters{
+				UserName:               "user",
+				AuthenticationProtocol: gosnmp.SHA,
+				PrivacyProtocol:        privProto,
+			},
+		}
 	}
-	assert.False(t, tr.isAuthorized(packet))
 
-	packet.MsgFlags = gosnmp.AuthNoPriv
-	assert.True(t, tr.isAuthorized(packet))
+	assert.True(t, tr.isAuthorized(newPacket(gosnmp.AuthNoPriv, gosnmp.UserSecurityModel, gosnmp.NoPriv), false))
+	assert.False(t, tr.isAuthorized(newPacket(gosnmp.AuthNoPriv, 1, gosnmp.NoPriv), false), "non-USM security model")
+	assert.False(t, tr.isAuthorized(newPacket(gosnmp.AuthPriv&^gosnmp.AuthNoPriv, gosnmp.UserSecurityModel, gosnmp.NoPriv), false), "priv without auth flags")
+	assert.True(t, tr.isAuthorized(newPacket(gosnmp.AuthPriv|gosnmp.Reportable, gosnmp.UserSecurityModel, gosnmp.AES), true))
+	assert.False(t, tr.isAuthorized(newPacket(gosnmp.AuthPriv, gosnmp.UserSecurityModel, gosnmp.AES), false), "plaintext scoped PDU under privacy flag")
+}
+
+func TestScopedPDUEncrypted(t *testing.T) {
+	assert.True(t, scopedPDUEncrypted(captureTrap(t, v3Sender("u", gosnmp.SHA, "authpass123", gosnmp.AES, "privpass123"))))
+	assert.False(t, scopedPDUEncrypted(captureTrap(t, v3Sender("u", gosnmp.SHA, "authpass123", gosnmp.NoPriv, ""))))
+	assert.False(t, scopedPDUEncrypted(captureTrap(t, v2cSender("public"))))
+	assert.False(t, scopedPDUEncrypted([]byte{0x30, 0x80}))
+	// gosnmp accepts non-minimal BER lengths, so the check must too.
+	assert.True(t, scopedPDUEncrypted([]byte{0x30, 0x81, 0x0c, 0x02, 0x01, 0x03, 0x30, 0x00, 0x04, 0x82, 0x00, 0x00, 0x04, 0x01, 0xff}))
+}
+
+func TestTrapperRejectsCraftedV3(t *testing.T) {
+	auth := []AuthEntry{
+		{Version: "v2c", Community: "public"},
+		{Version: "v3", Username: "authuser", AuthProtocol: "SHA256", AuthPassphrase: "authpass123"},
+	}
+	tests := []struct {
+		name string
+		msg  []byte
+	}{
+		// gosnmp skips authentication for non-USM security models.
+		{"non-USM security model", rawV3Trap("authuser", byte(gosnmp.AuthNoPriv), 1, string(make([]byte, 24)), true)},
+		// A truncated message with empty authentication parameters makes
+		// gosnmp slice past the end of the packet.
+		{"truncated authenticated message", rawV3Trap("authuser", byte(gosnmp.AuthNoPriv), int(gosnmp.UserSecurityModel), "", false)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			addr, sink := startTrapper(t, auth)
+			conn, err := net.Dial("udp", addr)
+			require.NoError(t, err)
+			_, err = conn.Write(tt.msg)
+			require.NoError(t, err)
+			require.NoError(t, conn.Close())
+
+			assert.Empty(t, receivedVersions(t, addr, sink, v2cSender("public")), "crafted trap should have been dropped")
+		})
+	}
+}
+
+func TestTrapperAcknowledgesOnlyAuthorizedInforms(t *testing.T) {
+	addr, sink := startTrapper(t, []AuthEntry{{Version: "v2c", Community: "public"}})
+
+	assert.NoError(t, sendInform(t, addr, "public"))
+	assert.Error(t, sendInform(t, addr, "wrong"), "unauthorized inform must not be acknowledged")
+	assert.Equal(t, 1, sink.LogRecordCount())
 }

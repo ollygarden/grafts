@@ -3,8 +3,10 @@
 package trapper
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
+	"errors"
 	"fmt"
 	"net"
 	"slices"
@@ -21,7 +23,11 @@ import (
 	"go.olly.garden/grafts/receiver/snmpreceiver/internal/logs"
 )
 
-const snmpTrapOIDMIB = "1.3.6.1.6.3.1.1.4.1.0"
+const (
+	snmpTrapOIDMIB = "1.3.6.1.6.3.1.1.4.1.0"
+	// maxMessageSize is the largest UDP payload.
+	maxMessageSize = 65535
+)
 
 // AuthEntry holds authentication credentials for a single auth profile.
 // A "v2c" entry accepts SNMPv1 and SNMPv2c traps carrying its community; a
@@ -94,51 +100,131 @@ func (tr *Trapper) ListenAddr() string {
 	return tr.resolvedAddr
 }
 
-// Run starts the trap listener and blocks until ctx is cancelled.
+// Run listens for traps until ctx is cancelled. It reads the socket itself
+// rather than using gosnmp's TrapListener so that malformed packets cannot
+// crash the process and informs are acknowledged only once authorized.
 func (tr *Trapper) Run(ctx context.Context) {
-	listener := gosnmp.NewTrapListener()
-	listener.OnNewTrap = tr.handleTrap
-	listener.Params = tr.params
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		if err := listener.Listen(tr.listenAddr); err != nil {
-			select {
-			case <-ctx.Done():
-				// expected shutdown
-			default:
-				tr.logger.Error("trap listener exited unexpectedly", zap.Error(err))
-			}
-		}
-	}()
-
-	// Wait for the listener to be ready
-	select {
-	case <-listener.Listening():
-		tr.mu.Lock()
-		tr.resolvedAddr = tr.listenAddr
-		tr.mu.Unlock()
-		tr.logger.Info("SNMP trap listener ready", zap.String("address", tr.listenAddr))
-	case <-done:
+	udpAddr, err := net.ResolveUDPAddr("udp", tr.listenAddr)
+	if err != nil {
+		tr.logger.Error("invalid SNMP trap listen address", zap.Error(err))
 		return
 	}
+	conn, err := net.ListenUDP("udp", udpAddr)
+	if err != nil {
+		tr.logger.Error("failed to start SNMP trap listener", zap.Error(err))
+		return
+	}
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer func() {
+		stop()
+		_ = conn.Close()
+	}()
 
-	select {
-	case <-ctx.Done():
-		listener.Close()
-	case <-done:
+	tr.mu.Lock()
+	tr.resolvedAddr = conn.LocalAddr().String()
+	tr.mu.Unlock()
+	tr.logger.Info("SNMP trap listener ready", zap.String("address", tr.ListenAddr()))
+
+	buf := make([]byte, maxMessageSize)
+	for {
+		n, remote, err := conn.ReadFromUDP(buf)
+		if err != nil {
+			if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
+				return
+			}
+			tr.logger.Warn("failed to read SNMP trap", zap.Error(err))
+			continue
+		}
+		tr.receive(conn, bytes.Clone(buf[:n]), remote)
 	}
 }
 
-// handleTrap processes an incoming SNMP trap packet.
-func (tr *Trapper) handleTrap(packet *gosnmp.SnmpPacket, addr *net.UDPAddr) {
-	if !tr.isAuthorized(packet) {
+// receive authenticates one datagram and, when accepted, consumes it and
+// acknowledges it if it is an inform.
+func (tr *Trapper) receive(conn *net.UDPConn, msg []byte, addr *net.UDPAddr) {
+	packet, err := tr.unmarshal(msg)
+	if err != nil {
+		tr.logger.Debug("dropped undecodable or unauthenticated trap",
+			zap.String("addr", addr.String()), zap.Error(err))
+		return
+	}
+	// gosnmp decodes a copy of SNMPv3 messages, so msg is still the raw packet.
+	encrypted := packet.MsgFlags&gosnmp.AuthPriv == gosnmp.AuthPriv && scopedPDUEncrypted(msg)
+	if !tr.isAuthorized(packet, encrypted) {
 		tr.logger.Warn("received trap from unauthorized source",
 			zap.String("addr", addr.String()))
 		return
 	}
 
+	tr.handleTrap(packet, addr)
+
+	if packet.PDUType == gosnmp.InformRequest {
+		packet.PDUType = gosnmp.GetResponse
+		packet.Error = gosnmp.NoError
+		packet.ErrorIndex = 0
+		out, err := packet.MarshalMsg()
+		if err == nil {
+			_, err = conn.WriteToUDP(out, addr)
+		}
+		if err != nil {
+			tr.logger.Warn("failed to acknowledge SNMP inform", zap.String("addr", addr.String()), zap.Error(err))
+		}
+	}
+}
+
+// unmarshal decodes and, for SNMPv3, authenticates and decrypts a trap.
+// gosnmp can panic on crafted input, so a panic is reported as an error.
+func (tr *Trapper) unmarshal(msg []byte) (packet *gosnmp.SnmpPacket, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			packet, err = nil, fmt.Errorf("malformed SNMP message: %v", r)
+		}
+	}()
+	return tr.params.UnmarshalTrap(msg, false)
+}
+
+// scopedPDUEncrypted reports whether an SNMPv3 message carries its scoped PDU
+// as an encrypted OCTET STRING rather than a plaintext SEQUENCE. gosnmp
+// accepts a plaintext scoped PDU even when the message claims privacy.
+func scopedPDUEncrypted(msg []byte) bool {
+	_, rest, _, ok := berElement(msg)
+	// Skip msgVersion, msgGlobalData and msgSecurityParameters.
+	for range 3 {
+		if !ok {
+			return false
+		}
+		_, _, rest, ok = berElement(rest)
+	}
+	tag, _, _, ok := berElement(rest)
+	return ok && tag == byte(gosnmp.OctetString)
+}
+
+// berElement splits the first definite-length BER element off b. It accepts
+// non-minimal length encodings, as gosnmp does.
+func berElement(b []byte) (tag byte, content, rest []byte, ok bool) {
+	if len(b) < 2 {
+		return 0, nil, nil, false
+	}
+	length, start := int(b[1]), 2
+	if length&0x80 != 0 {
+		n := length & 0x7f
+		if n == 0 || n > 4 || len(b) < start+n {
+			return 0, nil, nil, false
+		}
+		length = 0
+		for _, c := range b[start : start+n] {
+			length = length<<8 | int(c)
+		}
+		start += n
+	}
+	if len(b)-start < length {
+		return 0, nil, nil, false
+	}
+	return b[0], b[start : start+length], b[start+length:], true
+}
+
+// handleTrap converts an authorized trap to a log record and consumes it.
+func (tr *Trapper) handleTrap(packet *gosnmp.SnmpPacket, addr *net.UDPAddr) {
 	var trapOID string
 	var uptime int64
 	varbinds := make(map[string]interface{})
@@ -191,10 +277,18 @@ func (tr *Trapper) handleTrap(packet *gosnmp.SnmpPacket, addr *net.UDPAddr) {
 
 // isAuthorized checks whether the packet matches any accepted auth entry.
 // SNMPv3 packets reach this point only after gosnmp has matched a configured
-// user and verified the packet at the security level it claims, so the
-// remaining check is that the claimed level is not below that user's level.
-func (tr *Trapper) isAuthorized(packet *gosnmp.SnmpPacket) bool {
+// user and verified the packet at the security level it claims. The remaining
+// checks close gaps gosnmp leaves: a non-USM security model, a plaintext
+// scoped PDU under the privacy flag, and a level below the user's.
+func (tr *Trapper) isAuthorized(packet *gosnmp.SnmpPacket, encrypted bool) bool {
 	if packet.Version == gosnmp.Version3 {
+		// gosnmp skips authentication for any other security model.
+		if packet.SecurityModel != gosnmp.UserSecurityModel {
+			return false
+		}
+		if packet.MsgFlags&gosnmp.AuthPriv == gosnmp.AuthPriv && !encrypted {
+			return false
+		}
 		// gosnmp leaves the matched user's configured protocols on the packet.
 		usm, ok := packet.SecurityParameters.(*gosnmp.UsmSecurityParameters)
 		if !ok {
