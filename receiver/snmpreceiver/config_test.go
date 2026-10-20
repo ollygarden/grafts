@@ -267,6 +267,49 @@ func TestValidateTrapListenerRequiresListenAddress(t *testing.T) {
 	assert.Contains(t, err.Error(), "listen_address is required")
 }
 
+func TestValidateAuthV3Passphrases(t *testing.T) {
+	tests := []struct {
+		name    string
+		auth    AuthConfig
+		wantErr string
+	}{
+		{"empty auth passphrase", AuthConfig{AuthProtocol: "SHA"}, "auth_passphrase must be at least 8 characters"},
+		{"short auth passphrase", AuthConfig{AuthProtocol: "SHA", AuthPassphrase: "1234567"}, "auth_passphrase must be at least 8 characters"},
+		{"empty privacy passphrase", AuthConfig{AuthProtocol: "SHA", AuthPassphrase: "authpass", PrivacyProtocol: "AES"}, "privacy_passphrase must be at least 8 characters"},
+		{"valid authPriv", AuthConfig{AuthProtocol: "SHA", AuthPassphrase: "authpass", PrivacyProtocol: "AES", PrivacyPassphrase: "privpass"}, ""},
+		{"noAuthNoPriv", AuthConfig{}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			auth := tt.auth
+			auth.Version = "v3"
+			auth.Username = "user"
+			cfg := createDefaultConfig().(*Config)
+			cfg.Auth = map[string]AuthConfig{"v3": auth}
+			cfg.TrapListener = &TrapListenerConfig{ListenAddress: "0.0.0.0:162", AcceptedAuth: []string{"v3"}}
+			err := cfg.Validate()
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+func TestValidateTrapListenerRejectsDuplicateV3Username(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.Auth = map[string]AuthConfig{
+		"strict": {Version: "v3", Username: "monitor", AuthProtocol: "SHA", AuthPassphrase: "authpass"},
+		"loose":  {Version: "v3", Username: "monitor"},
+	}
+	cfg.TrapListener = &TrapListenerConfig{ListenAddress: "0.0.0.0:162", AcceptedAuth: []string{"strict", "loose"}}
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `share SNMPv3 username "monitor"`)
+}
+
 // loadConfigFromYAML is a helper that reads a YAML file under testdata/
 // and decodes only the "receivers.snmp" section into a *Config.
 func loadConfigFromYAML(t *testing.T, filename string) *Config {

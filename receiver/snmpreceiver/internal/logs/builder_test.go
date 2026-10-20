@@ -14,7 +14,6 @@ func TestBuildTrapLogLinkDown(t *testing.T) {
 		SourceIP:   "192.168.1.1",
 		SourcePort: 162,
 		Version:    "v2c",
-		Community:  "public",
 		TrapOID:    "1.3.6.1.6.3.1.1.5.3",
 		Uptime:     12345,
 		Varbinds: map[string]interface{}{
@@ -62,9 +61,8 @@ func TestBuildTrapLogLinkDown(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "v2c", version.Str())
 
-	community, ok := attrs.Get("snmp.trap.community")
-	require.True(t, ok)
-	assert.Equal(t, "public", community.Str())
+	_, ok = attrs.Get("snmp.trap.community")
+	assert.False(t, ok, "community string must not be emitted")
 }
 
 func TestBuildTrapLogColdStart(t *testing.T) {

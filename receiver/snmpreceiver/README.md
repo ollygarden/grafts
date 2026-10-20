@@ -173,7 +173,7 @@ Auth configs are named and reusable. Each target references an auth config by na
 | `AuthNoPriv` | `username` + `auth_protocol` + `auth_passphrase` |
 | `AuthPriv` | All of the above + `privacy_protocol` + `privacy_passphrase` |
 
-The security level is determined automatically from the configured protocols.
+The security level is determined automatically from the configured protocols. Passphrases must be at least 8 characters (RFC 3414).
 
 ### Trap Listener
 
@@ -181,10 +181,23 @@ When `trap_listener` is configured and the receiver is included in a logs pipeli
 
 - **Severity**: Mapped from well-known trap OIDs (`coldStart` = Info, `linkDown` = Warn, `authenticationFailure` = Error). Unknown traps default to Warn.
 - **Body**: `"SNMP Trap: <trap OID>"`
-- **Attributes**: `snmp.trap.oid`, `snmp.trap.type` (if well-known), `snmp.trap.version`, `snmp.trap.community`, `snmp.trap.uptime`, plus all varbinds as `snmp.varbind.<oid>`.
+- **Attributes**: `snmp.trap.oid`, `snmp.trap.type` (if well-known), `snmp.trap.version` (`v1`, `v2c`, or `v3`), `snmp.trap.uptime`, plus all varbinds as `snmp.varbind.<oid>`. The community string is never emitted.
 - **Resource**: `snmp.host` and `snmp.port` from the trap sender's IP/port.
 
-SNMPv1 traps are accepted and normalized to v2c format.
+#### Trap authentication
+
+`accepted_auth` lists the auth configs a trap must match:
+
+- A `v2c` auth config accepts SNMPv1 and SNMPv2c traps whose community equals its `community`.
+- A `v3` auth config accepts SNMPv3 traps from its `username` that use the User-based Security Model. The receiver verifies the message with the configured `auth_protocol`/`auth_passphrase` and decrypts it with the configured `privacy_protocol`/`privacy_passphrase`. It drops traps sent at a lower security level than the auth config defines (for example, an unauthenticated or unencrypted trap for an `AuthPriv` user). Keys are localized to the sending device's engine ID, so one auth config covers every device that shares the user's credentials. Each SNMPv3 username may appear in only one `accepted_auth` entry.
+
+Rejected traps are dropped. An unknown community, a non-USM security model, or an SNMPv3 security-level downgrade logs a warning that names the sender's address. Malformed messages and SNMPv3 traps from unknown users or that fail authentication or decryption are logged at debug level. Informs are acknowledged only after they pass authentication.
+
+SNMPv3 trap authentication does not enforce the RFC 3414 timeliness window, so a captured authenticated trap can be replayed. Restrict the listener to trusted networks when replay matters.
+
+> **Warning:** when `accepted_auth` is empty or omitted, the listener accepts every SNMPv1/v2c trap regardless of community and logs a warning at startup. SNMPv3 traps are always dropped in that mode because they cannot be verified without a configured user. Configure `accepted_auth` for any listener reachable from untrusted networks.
+
+The listener does not answer SNMPv3 engine ID discovery, so SNMPv3 informs work only when the sender is configured with the engine ID it should use.
 
 ## Example Configurations
 
@@ -327,8 +340,8 @@ Each trap produces a `LogRecord` with:
 |---|---|
 | Target unreachable on poll | Log warning, skip this cycle, retry next interval |
 | Single OID walk fails | Log error, continue with remaining metric groups |
-| Trap auth rejected | Log warning with source IP, drop the trap |
-| Trap parse failure | Log error, drop the trap |
+| Trap auth rejected: unknown community, non-USM security model, or SNMPv3 security-level downgrade | Log warning with source address, drop the trap |
+| Malformed trap, unknown SNMPv3 user, failed authentication or decryption | Log at debug level, drop the trap |
 | Consumer error | Log warning, data is lost (SNMP is best-effort) |
 
 ## Requirements
